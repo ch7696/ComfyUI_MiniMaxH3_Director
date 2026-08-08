@@ -1,0 +1,19 @@
+MiniMax H3 Director T8 Bridge
+Copyright 2026 ch7696 and contributors
+
+This project is a modified distribution of:
+
+  ComfyUI MiniMax H3 Director
+  Copyright 2026 ComfyUI-Bernini Contributors
+  https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director
+  Licensed under the Apache License, Version 2.0.
+
+The fork adds an optional runtime integration with:
+
+  MiniMax H3 Audio T8
+  Copyright 2026 MiniMax H3 Audio T8 contributors
+  https://github.com/T8mars/comfyui-minimax-h3-audio-T8
+  Licensed under GPL-3.0-or-later.
+
+Modified files carry notices describing the T8 Bridge changes. No model
+weights from MiniMax, Comfy-Org, Hugging Face, or other providers are included.

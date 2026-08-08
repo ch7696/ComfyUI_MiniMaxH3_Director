@@ -1,4 +1,8 @@
-"""Run MiniMax H3 Director segments through the official ComfyUI core pipeline."""
+"""Run MiniMax H3 Director segments through the official ComfyUI core pipeline.
+
+Modified by the MiniMax H3 Director T8 Bridge contributors in 2026 to route
+sampling through the optional T8 dual-clock backend.
+"""
 
 from __future__ import annotations
 
@@ -179,6 +183,7 @@ def execute_director_plan_core(
     scheduler: str = "simple",
     shift_video: float = 12.0,
     shift_audio: float = 3.0,
+    sampling_backend: str = "native",
     clear_vram_between_segments: bool = True,
 ) -> tuple[torch.Tensor, list[torch.Tensor], list[dict[str, Any]], str]:
     """Process every segment with MiniMax H3 conditioning + single-stage sampling."""
@@ -197,7 +202,8 @@ def execute_director_plan_core(
     output_chunks: list[torch.Tensor] = []
     segment_outputs: list[torch.Tensor] = []
     segment_audios: list[dict[str, Any]] = []
-    reports: list[str] = [plan_summary(plan), "", "Execution path: ComfyUI official MiniMax H3"]
+    backend_label = "T8 dual-clock Euler" if sampling_backend == "t8_dual_clock" else "ComfyUI official MiniMax H3"
+    reports: list[str] = [plan_summary(plan), "", f"Execution path: {backend_label}"]
     if clear_vram_between_segments:
         reports.append("VRAM: 段间清理显存已开启。")
     if audio_mode == AUDIO_MODE_MUTE:
@@ -360,6 +366,7 @@ def execute_director_plan_core(
             scheduler=scheduler,
             shift_video=shift_video,
             shift_audio=shift_audio,
+            sampling_backend=sampling_backend,
             on_phase=_report_sample_phase,
         )
 

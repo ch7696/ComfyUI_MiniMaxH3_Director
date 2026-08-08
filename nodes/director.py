@@ -1,4 +1,8 @@
-"""MiniMax H3 Director — timeline UI + official MiniMax H3 AV execution."""
+"""MiniMax H3 Director - timeline UI + official MiniMax H3 AV execution.
+
+Modified by the MiniMax H3 Director T8 Bridge contributors in 2026 to expose
+the optional T8 dual-clock sampling backend.
+"""
 
 from __future__ import annotations
 
@@ -94,6 +98,13 @@ class MiniMaxH3Director:
                         "tooltip": "Official template: BasicScheduler simple.",
                     },
                 ),
+                "sampling_backend": (
+                    ["native", "t8_dual_clock"],
+                    {
+                        "default": "native",
+                        "tooltip": "native uses the official KSampler path. t8_dual_clock uses T8's separate video/audio clocks; recommended with steps=4 and CFG=1.",
+                    },
+                ),
                 "shift_video": (
                     "FLOAT",
                     {"default": 12.0, "min": 0.01, "max": 100.0, "step": 0.01, "tooltip": "MiniMaxH3SigmaShift shift_video."},
@@ -129,7 +140,7 @@ class MiniMaxH3Director:
     CATEGORY = _CATEGORY
     DESCRIPTION = (
         "MiniMax H3 Director: MiniMaxH3ImageToVideo / ReferenceToVideo conditioning, "
-        "single-stage KSampler + MiniMaxH3SigmaShift, LTXVSeparateAVLatent decode. "
+        "native KSampler or T8 dual-clock sampling, LTXVSeparateAVLatent decode. "
         "Supports t2v / i2v / fl2v / r2v / v2v / rv2v. Defaults: 0.4MP 16:9 (864×480), 5s / 124 frames @ 24 fps."
     )
 
@@ -151,6 +162,7 @@ class MiniMaxH3Director:
         steps=25,
         sampler="res_multistep",
         scheduler="simple",
+        sampling_backend="native",
         cfg=1.0,
         seed=0,
         shift_video=12.0,
@@ -187,6 +199,7 @@ class MiniMaxH3Director:
             scheduler=scheduler,
             shift_video=shift_video,
             shift_audio=shift_audio,
+            sampling_backend=sampling_backend,
             clear_vram_between_segments=clear_vram_between_segments,
         )
 

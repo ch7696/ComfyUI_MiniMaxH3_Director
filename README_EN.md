@@ -1,7 +1,8 @@
-# ComfyUI MiniMax H3 Director
+# ComfyUI MiniMax H3 Director T8 Bridge
 
-Multi-segment AV timeline director for **official ComfyUI MiniMax-H3**.  
-Repository: [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director)
+Compatible fork of [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) that keeps the native sampling path and adds the dual-clock audio/video backend from [T8mars/comfyui-minimax-h3-audio-T8](https://github.com/T8mars/comfyui-minimax-h3-audio-T8).
+
+> This is not an official AIMixer or T8mars release. See [NOTICE](NOTICE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for provenance and licensing.
 
 **中文文档** → [README.md](README.md)
 
@@ -22,6 +23,7 @@ Repository: [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/Comf
 | **Source-video edit (v2v / rv2v)** | Bernini-style source timeline; each segment bound as `<Video 1>`; `rv2v` adds optional refs (images 1–9, audios 1–3) |
 | **Run select** | Sample only checked segments/groups; unselected may use cache or source passthrough when exporting all |
 | **Native stereo audio** | Generated with the picture; `v2v`/`rv2v` can generate / keep source / mute |
+| **T8 dual-clock sampling** | `sampling_backend=t8_dual_clock` controls video/audio sigma shifts separately; `native` preserves the upstream path |
 | **Run report** | `report` output with plan and per-segment summary |
 
 ### Inputs / outputs
@@ -37,7 +39,7 @@ Repository: [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/Comf
 
 **ComfyUI ≥ v0.30.0** with official MiniMax H3 nodes ([PR #15224](https://github.com/comfyanonymous/ComfyUI/pull/15224), [PR #15228](https://github.com/comfyanonymous/ComfyUI/pull/15228)).
 
-Optional: `scenedetect`, `opencv-python-headless`, `imageio-ffmpeg` — see `requirements.txt`.
+The `t8_dual_clock` mode requires T8 in the sibling directory `custom_nodes/minimax-h3-audio-T8`. Optional Python dependencies: `scenedetect`, `opencv-python-headless`, `imageio-ffmpeg` — see `requirements.txt`.
 
 ## Installation
 
@@ -45,7 +47,8 @@ Optional: `scenedetect`, `opencv-python-headless`, `imageio-ffmpeg` — see `req
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
+git clone https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge.git ComfyUI_MiniMaxH3_Director
+git clone https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git minimax-h3-audio-T8
 
 pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 ```
@@ -56,8 +59,9 @@ Restart ComfyUI.
 
 1. Open **ComfyUI Manager**
 2. Choose **Install via Git URL**
-3. Enter `https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git` and install
-4. Restart ComfyUI
+3. Enter `https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge.git` and install
+4. Install `https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git` through Git URL
+5. Restart ComfyUI
 
 ## Models & workflow downloads
 
@@ -119,8 +123,10 @@ This repo ships examples under `example_workflows/`:
 
 | | |
 |---|---|
-| **Maintainer** | [AIMixer](https://github.com/AIMixer) |
-| **Repository** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
+| **Fork maintainer** | [ch7696](https://github.com/ch7696) |
+| **Fork repository** | [github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge](https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge) |
+| **Upstream maintainer** | [AIMixer](https://github.com/AIMixer) |
+| **Upstream repository** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
 | **Sibling plugin** | [ComfyUI_Bernini_Director](https://github.com/AIMixer/ComfyUI_Bernini_Director) |
 | **Author QQ** | **3697688140** |
 | **Bilibili** | [space.bilibili.com/1997403556](https://space.bilibili.com/1997403556) |
@@ -135,4 +141,4 @@ This repo ships examples under `example_workflows/`:
 
 ## License
 
-Apache-2.0
+This fork is distributed under **GPL-3.0-or-later** for compatibility with the T8 runtime module. Upstream AIMixer Director code and notices remain under **Apache-2.0**. See [LICENSE](LICENSE), [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0), [NOTICE](NOTICE), and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

@@ -1,6 +1,8 @@
-# ComfyUI MiniMax H3 Director
+# ComfyUI MiniMax H3 Director T8 Bridge
 
-基于 **ComfyUI 官方 MiniMax-H3** 的多段音视频导演台插件。仓库地址：[AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director)
+基于 [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) 的兼容分支，在保留原生采样路径的同时，增加 [T8mars/comfyui-minimax-h3-audio-T8](https://github.com/T8mars/comfyui-minimax-h3-audio-T8) 双时钟音视频采样后端。
+
+> 本仓库不是 AIMixer 或 T8mars 的官方发行版。原始 Director 代码采用 Apache-2.0；T8 运行时依赖采用 GPL-3.0-or-later。修改和第三方声明见 [NOTICE](NOTICE) 与 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
 
 **English** → [README_EN.md](README_EN.md)
 
@@ -21,6 +23,7 @@
 | **源视频编辑 (v2v / rv2v)** | Bernini 风格源视频时间轴；每段源画面自动绑定 `<Video 1>`；`rv2v` 另可挂参考图（图片1–9）与参考音频（音频1–3） |
 | **选择运行** | 开启后只采样勾选的片段/素材组；未勾选段可用缓存或源画面填充（全部导出时） |
 | **原生立体声音频** | 与画面同次采样生成；`v2v`/`rv2v` 可选生成声音 / 使用原声 / 静音 |
+| **T8 双时钟采样** | `sampling_backend=t8_dual_clock` 时分别控制视频与音频 sigma shift；`native` 保留上游官方采样路径 |
 | **运行报告** | `report` 口输出分段计划、每段任务摘要 |
 
 ### 输入 / 输出
@@ -36,7 +39,7 @@
 
 请将 **ComfyUI** 升级到 **v0.30.0** 及以上（含官方 MiniMax H3 节点：[PR #15224](https://github.com/comfyanonymous/ComfyUI/pull/15224)、[PR #15228](https://github.com/comfyanonymous/ComfyUI/pull/15228)）。
 
-可选：`scenedetect`（智能分割）、`opencv-python-headless`（源视频解码）、`imageio-ffmpeg`（原声抽取）——见 `requirements.txt`。
+`t8_dual_clock` 模式需要将 T8 仓库安装为相邻目录 `custom_nodes/minimax-h3-audio-T8`。可选 Python 依赖：`scenedetect`（智能分割）、`opencv-python-headless`（源视频解码）、`imageio-ffmpeg`（原声抽取）——见 `requirements.txt`。
 
 ## 安装
 
@@ -44,7 +47,8 @@
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
+git clone https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge.git ComfyUI_MiniMaxH3_Director
+git clone https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git minimax-h3-audio-T8
 
 pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 ```
@@ -55,8 +59,9 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 
 1. 打开 **ComfyUI Manager**
 2. 选择 **Install via Git URL**
-3. 填入 `https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git` 并安装
-4. 重启 ComfyUI
+3. 填入 `https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge.git` 并安装
+4. 再通过 Git URL 安装 `https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git`
+5. 重启 ComfyUI
 
 ## 模型与工作流下载
 
@@ -102,7 +107,8 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 ### 默认采样参数
 
 - 画布默认 **0.4MP 16:9（864×480）**，**5 秒 / 124** 帧 @ **24 fps**（17k+5 网格）
-- **25** steps，`res_multistep` + `simple`，CFG **1.0**
+- 原生模式默认 **25** steps，`res_multistep` + `simple`，CFG **1.0**
+- T8 模式推荐 **4** steps、`sampling_backend=t8_dual_clock`、CFG **1.0**
 - Sigma shift：video **12** / audio **3**
 
 ### 首尾帧 fl2v 用法摘要
@@ -144,7 +150,8 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 | | |
 |---|---|
 | **维护者** | [AI搅拌手 / AIMixer](https://github.com/AIMixer) |
-| **本仓库** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
+| **本分支** | [github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge](https://github.com/ch7696/ComfyUI-MiniMaxH3-Director-T8Bridge) |
+| **上游仓库** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
 | **姊妹插件** | [ComfyUI_Bernini_Director](https://github.com/AIMixer/ComfyUI_Bernini_Director) |
 | **作者 QQ** | **3697688140** |
 | **B 站** | [space.bilibili.com/1997403556](https://space.bilibili.com/1997403556) |
@@ -160,4 +167,4 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 
 ## 许可证
 
-Apache-2.0
+本分支整体按 **GPL-3.0-or-later** 分发，以兼容运行时加载的 T8 采样模块。上游 AIMixer Director 代码及其版权声明仍按 **Apache-2.0** 保留。详见 [LICENSE](LICENSE)、[LICENSE-APACHE-2.0](LICENSE-APACHE-2.0)、[NOTICE](NOTICE) 与 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
