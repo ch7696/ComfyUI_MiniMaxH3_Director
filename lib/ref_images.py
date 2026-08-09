@@ -9,6 +9,12 @@ MAX_REFERENCE_IMAGES = 9
 REF_IMAGE_KEY_PREFIX = "reference_image_"
 
 
+def first_free_reference_index(indices) -> int | None:
+    """Return the first available 0-based MiniMax reference-image slot."""
+    used = {int(index) for index in indices if 0 <= int(index) < MAX_REFERENCE_IMAGES}
+    return next((index for index in range(MAX_REFERENCE_IMAGES) if index not in used), None)
+
+
 def reference_image_label(index: int) -> str:
     """User-facing label for slot index (0-based) → 图片1…图片9."""
     return f"图片{int(index) + 1}"

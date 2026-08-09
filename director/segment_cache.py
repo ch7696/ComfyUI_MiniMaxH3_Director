@@ -67,7 +67,7 @@ def segment_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[str,
         "continuity": plan.continuity_enabled,
         "continuity_overlap": plan.continuity_overlap_frames if plan.continuity_enabled else 0,
         # Bump when continuity sampling/handoff semantics change (invalidates stale segs).
-        "continuity_pipeline": "minimax_h3_lastframe_v1",
+        "continuity_pipeline": "minimax_h3_lastframe_v2_r2v_tail_ref",
     }
 
 

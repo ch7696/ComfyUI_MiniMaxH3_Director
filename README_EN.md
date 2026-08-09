@@ -20,6 +20,7 @@ Compatible fork of [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMix
 | **Task modes** | `t2v`, `i2v`, `fl2v` (first/last frame), `r2v` (reference material groups), `v2v` (video-to-video), `rv2v` (reference-guided source edit) |
 | **First/last frame (fl2v)** | Dedicated shot groups: add group → start frame required, end frame optional; drag edges for duration; run-select per group |
 | **Reference groups (r2v)** | fl2v-style groups: up to 9 images / 3 audios / 3 videos per group; prompt tags `<Picture N>` / `<Video K>` / `<Audio J>` (or `@` picker); timeline preview synced with card selection |
+| **R2V segment continuity** | Optional segment continuity injects the previous segment's final frame into the next free `<Picture N>` slot without replacing user references; skips with a report when all nine slots are occupied |
 | **Source-video edit (v2v / rv2v)** | Bernini-style source timeline; each segment bound as `<Video 1>`; `rv2v` adds optional refs (images 1–9, audios 1–3) |
 | **Run select** | Sample only checked segments/groups; unselected may use cache or source passthrough when exporting all |
 | **Native stereo audio** | Generated with the picture; `v2v`/`rv2v` can generate / keep source / mute |

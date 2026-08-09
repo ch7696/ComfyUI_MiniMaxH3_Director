@@ -1,4 +1,7 @@
-"""Cross-segment continuity — **opt-in official Bernini path only**.
+"""Opt-in cross-segment continuity for MiniMax H3 Director.
+
+MiniMax I2V/FL2V hands the previous final frame to the next first-frame input.
+MiniMax R2V injects that frame into the next available Picture slot instead.
 
 When continuity is **off**: Studio / per-segment path — segment source + user refs
 → BerniniConditioning → KSamplerAdvanced → VAEDecode. No cross-segment injection.
@@ -42,7 +45,7 @@ from .segment_cache import load_segment_cache
 
 log = logging.getLogger("ComfyUI-MiniMaxH3-Director.director.continuity")
 
-CONTINUITY_TASK_KEYS = frozenset({"i2v", "fl2v"})
+CONTINUITY_TASK_KEYS = frozenset({"i2v", "fl2v", "r2v"})
 
 DEFAULT_CONTINUITY_OVERLAP = 9
 MIN_CONTINUITY_OVERLAP = 1

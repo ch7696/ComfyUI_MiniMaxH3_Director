@@ -778,12 +778,9 @@ def plan_summary(plan: DirectorPlan) -> str:
     export_label = "分段导出" if plan.export_mode == "segments" else "全部导出"
     lines.append(f"Export mode: {export_label}")
     if plan.continuity_enabled:
-        from .segment_continuity import resolve_continuity_lock_pixels
-
-        lock_px = resolve_continuity_lock_pixels(plan.continuity_overlap_frames)
         lines.append(
-            f"Segment continuity: ON (overlap {plan.continuity_overlap_frames} "
-            f"→ SCAIL lock {lock_px}f + appearance refs)"
+            "Segment continuity: ON (I2V/FL2V last-frame handoff; "
+            "R2V previous tail → next free Picture slot)"
         )
     else:
         lines.append("Segment continuity: OFF (official Studio / per-segment path)")

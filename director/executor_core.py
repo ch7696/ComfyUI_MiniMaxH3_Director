@@ -12,6 +12,7 @@ from typing import Any
 import torch
 
 from ..lib.image_prep import fit_canvas, fit_video_long_edge
+from ..lib.ref_images import first_free_reference_index
 from ..lib.task_modes import SUPPORTED_TASK_KEYS
 from ..nodes.conditioning import run_minimax_conditioning
 from .core_sampling import sample_single_stage
@@ -91,6 +92,23 @@ def _ref_tensor_from_seg_refs(refs, index: int) -> torch.Tensor | None:
     return None
 
 
+def _r2v_continuity_ref_index(seg, prev_tail: torch.Tensor | None) -> int | None:
+    if prev_tail is None or prev_tail.shape[0] <= 0:
+        return None
+    indices = [int(getattr(ref, "index", -1)) for ref in (seg.refs or [])]
+    return first_free_reference_index(indices)
+
+
+def _reinforce_r2v_continuity_prompt(prompt: str, ref_index: int) -> str:
+    tag = f"<Picture {int(ref_index) + 1}>"
+    instruction = (
+        f"{tag} is the previous segment's final frame. Start this segment as a direct "
+        f"visual continuation of {tag}, preserving composition, camera direction, lighting, "
+        "character appearance, pose, and motion direction."
+    )
+    return f"{instruction} {(prompt or '').strip()}".strip()
+
+
 def _build_minimax_inputs(
     plan: DirectorPlan,
     seg,
@@ -99,6 +117,7 @@ def _build_minimax_inputs(
     ctx_w: int,
     ctx_h: int,
     prev_tail: torch.Tensor | None,
+    r2v_continuity_ref_index: int | None = None,
 ):
     """Map segment task + refs to MiniMax ImageToVideo / ReferenceToVideo inputs."""
     task_key = seg.task_key
@@ -132,6 +151,12 @@ def _build_minimax_inputs(
                 continue
             idx = key.removeprefix("reference_image_")
             ref_images[f"ref_image_{idx}"] = tensor[:1] if tensor.ndim == 4 else tensor
+        if (
+            r2v_continuity_ref_index is not None
+            and prev_tail is not None
+            and prev_tail.shape[0] > 0
+        ):
+            ref_images[f"ref_image_{r2v_continuity_ref_index}"] = prev_tail[-1:].clone()
         if not ref_images:
             ref_images = None
         # Prefer multi-slot ref_videos (r2v batch cards); fall back to legacy single meta.
@@ -221,7 +246,8 @@ def execute_director_plan_core(
 
     if plan.continuity_enabled:
         reports.append(
-            "Segment continuity: ON — last-frame → next first_frame handoff (no SCAIL / Wan latent lock)."
+            "Segment continuity: ON — I2V/FL2V last-frame handoff; "
+            "R2V previous tail → next free Picture slot."
         )
     else:
         reports.append("Segment continuity: OFF — per-segment generation only.")
@@ -273,6 +299,18 @@ def execute_director_plan_core(
             prev_tail = resolve_prev_segment_output(
                 plan, all_segments, seg.index, completed_outputs, node_id
             )
+        r2v_continuity_ref_index = (
+            _r2v_continuity_ref_index(seg, prev_tail)
+            if seg.task_key == "r2v"
+            else None
+        )
+        if seg.task_key == "r2v" and prev_tail is not None and r2v_continuity_ref_index is None:
+            message = (
+                f"Segment {seg.index + 1}: R2V tail reference skipped because "
+                "all 9 Picture slots are occupied."
+            )
+            reports.append(message)
+            log.warning(message)
 
         ctx_w = plan.width
         ctx_h = plan.height
@@ -295,6 +333,8 @@ def execute_director_plan_core(
             positive_prompt = reinforce_fl2v_prompt(positive_prompt, has_end_frame=has_end)
         elif seg.task_key == "r2v":
             ref_idxs = [int(getattr(r, "index", 0)) for r in (seg.refs or []) if r is not None]
+            if r2v_continuity_ref_index is not None:
+                ref_idxs.append(r2v_continuity_ref_index)
             vid_idxs = [int(getattr(v, "index", 0)) for v in (getattr(seg, "ref_videos", None) or []) if v is not None]
             audio_idxs = [int(getattr(a, "index", 0)) for a in (seg.ref_audios or []) if a is not None]
             positive_prompt = reinforce_r2v_prompt(
@@ -303,6 +343,14 @@ def execute_director_plan_core(
                 video_indices=vid_idxs,
                 audio_indices=audio_idxs,
             )
+            if r2v_continuity_ref_index is not None:
+                positive_prompt = _reinforce_r2v_continuity_prompt(
+                    positive_prompt, r2v_continuity_ref_index
+                )
+                reports.append(
+                    f"Segment {seg.index + 1}: previous tail injected as "
+                    f"<Picture {r2v_continuity_ref_index + 1}>."
+                )
         elif seg.task_key == "v2v":
             positive_prompt = reinforce_v2v_prompt(positive_prompt)
         elif seg.task_key == "rv2v":
@@ -318,7 +366,13 @@ def execute_director_plan_core(
         )
 
         first_frame, last_frame, ref_images, ref_videos, ref_audios = _build_minimax_inputs(
-            plan, seg, clip_frames=clip_frames, ctx_w=ctx_w, ctx_h=ctx_h, prev_tail=prev_tail,
+            plan,
+            seg,
+            clip_frames=clip_frames,
+            ctx_w=ctx_w,
+            ctx_h=ctx_h,
+            prev_tail=prev_tail,
+            r2v_continuity_ref_index=r2v_continuity_ref_index,
         )
 
         if seg.task_key in {"r2v", "v2v", "rv2v"} and (ref_images or ref_videos or ref_audios) and audio_vae is None:

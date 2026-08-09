@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI_MiniMaxH3_Director_T8Bridge"
 description = "MiniMax H3 Director fork with optional T8 dual-clock audio/video sampling."
-version = "1.0.0+t8.1"
+version = "1.0.0+t8.2"
 license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.10"
 
