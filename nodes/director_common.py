@@ -88,6 +88,16 @@ def director_perf_inputs() -> dict:
                 "tooltip": "段间清理显存：每段结束后卸载模型并清空 CUDA 缓存。",
             },
         ),
+        "segment_memory_mode": (
+            ["auto", "fast", "stable"],
+            {
+                "default": "auto",
+                "tooltip": (
+                    "段间显存策略：auto 在普通/高显存时保留模型，低显存时卸载；"
+                    "fast 始终保留模型，stable 每段卸载模型。"
+                ),
+            },
+        ),
         "export_source_images": (
             "BOOLEAN",
             {

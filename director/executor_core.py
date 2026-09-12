@@ -89,7 +89,7 @@ from .segment_continuity import (
     match_export_opening_grade,
     resolve_prev_segment_output,
 )
-from .vram_cleanup import cleanup_segment_vram
+from .vram_cleanup import cleanup_segment_vram, resolve_unload_models_policy
 
 log = logging.getLogger("ComfyUI-MiniMaxH3-Director.director.core")
 
@@ -395,6 +395,7 @@ def execute_director_plan_core(
     shift_video: float = 12.0,
     shift_audio: float = 3.0,
     clear_vram_between_segments: bool = True,
+    segment_memory_mode: str = "auto",
 ) -> tuple[
     torch.Tensor,
     list[torch.Tensor],
@@ -417,6 +418,7 @@ def execute_director_plan_core(
     plan.sample_shift_video = float(shift_video)
     plan.sample_shift_audio = float(shift_audio)
     audio_mode = resolve_audio_mode(plan)
+    unload_models_between_segments, memory_policy = resolve_unload_models_policy(segment_memory_mode)
     decode_audio = audio_mode == AUDIO_MODE_GENERATE
     # UI toggle on the player bar (timeline.liveTaePreview); default off.
     # When off: skip step TAE and the post-sample full-segment JPEG playback encode.
@@ -477,7 +479,11 @@ def execute_director_plan_core(
     else:
         reports.append("Live preview: OFF — 跳过采样预览。")
     if clear_vram_between_segments:
-        reports.append("VRAM: 段间清理显存已开启（最后一段不清理）。")
+        reports.append(
+            "VRAM: 段间清理显存已开启（最后一段不清理）；"
+            f"策略={memory_policy}，"
+            f"{'每段卸载模型' if unload_models_between_segments else '保留模型，仅清理临时缓存'}。"
+        )
     if audio_mode == AUDIO_MODE_MUTE:
         reports.append("Audio: muted — skip audio VAE decode, silent AUDIO output.")
     elif audio_mode == AUDIO_MODE_SOURCE:
@@ -1051,7 +1057,7 @@ def execute_director_plan_core(
 
         # Single / last segment: skip — official H3 also keeps models loaded.
         if clear_vram_between_segments and seg_total > 1:
-            cleanup_segment_vram(enabled=True, unload_models=True)
+            cleanup_segment_vram(enabled=True, unload_models=unload_models_between_segments)
 
         def _report_sample_phase(phase: str, value: float) -> None:
             report_director_progress(
@@ -1408,7 +1414,7 @@ def execute_director_plan_core(
             )
 
         if clear_vram_between_segments and progress_index < seg_total - 1:
-            cleanup_segment_vram(enabled=True)
+            cleanup_segment_vram(enabled=True, unload_models=unload_models_between_segments)
 
         reports.append(
             f"Segment {ui_idx + 1}/{timeline_seg_total}: {task_hint} "
@@ -1451,8 +1457,6 @@ def execute_director_plan_core(
                         progress_pos=progress_pos,
                     )
         if seg.index in run_indices:
-            if clear_vram_between_segments and segment_outputs:
-                cleanup_segment_vram(enabled=True)
             try:
                 chunk, audio_dict, pre_chunk = _run_one_segment(
                     seg, progress_index=progress_pos[seg.index]
