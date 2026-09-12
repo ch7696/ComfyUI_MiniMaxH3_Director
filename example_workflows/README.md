@@ -12,6 +12,7 @@
 | `minimax_h3_director_external_groups_i2v.json` | fl2v | fl2va | 外部 Group（Image to Video）→ Combine → Director.`i2v_groups`；时长/素材以接线为准 |
 | `minimax_h3_director_external_groups_r2v.json` | r2v | **ref2va** | 外部 Group（Reference to Video）→ Combine → Director.`r2v_groups`；可用「选择运行」勾选组序 |
 | `minimax_h3_director_二采_加速.json` | r2v | **ref2va** | 外接 **MiniMax H3 Director Refine** → Director.`refine`（SIGMAS + H3 latent）。`images` 为二采后成片，`images_pre_refine` 为一采对比片 |
+| `minimax_h3_standalone_latent_refine.json` | t2v | fl2va | 独立一采 → Direct Latent 二采；同一份 positive conditioning 分支复用；输出一采/二采视频并保存二采 AV latent |
 
 ## 模型路径（与官方模板一致）
 
@@ -47,3 +48,17 @@ Refine 示例另把 `images_pre_refine` 接到第二路 `CreateVideo` / `SaveVid
 - 可选接 `refine_model`（二采 UNET）；不接则用导演台主模型
 - `upscale` 默认 `h3_latent`：在 Refine 节点 `upscale_method` 下方下拉选 3D 权重（`mode=latent_upscale` 时同样出现）。权重放 `ComfyUI/models/latent_upscale_models/`。`lanczos` 可另接 `upscale_model`（RealESRGAN 等），不接则纯插值；也可改 `nvidia_rtx_vsr`
 - fl2v 默认跳过二采；关掉 `skip_fl2v` 才会采首尾帧镜头
+
+## 独立 Latent 二采工作流
+
+`minimax_h3_standalone_latent_refine.json` 不使用导演台时间轴：
+
+```text
+MiniMaxH3DirectorConditioning
+  ├─ positive → 官方 BasicGuider → 一采 SamplerCustomAdvanced
+  └─ positive + 一采 LATENT → MiniMax H3 Latent Refine (Direct)
+                                      ├─ VAEDecode / VAEDecodeAudio → 二采视频
+                                      └─ MiniMax H3 Latent Save → output/minimax_h3_latents/
+```
+
+同一张工作流内不需要复制提示词；拆到另一张工作流时，需要重新建立 positive conditioning，r2v 还要重新接参考素材。

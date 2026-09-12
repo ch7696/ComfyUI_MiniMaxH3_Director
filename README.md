@@ -42,6 +42,7 @@
 | **运行报告** | `report` 口输出分段计划、每段任务摘要 |
 | **导演包导入导出** | 工具栏「导入/导出导演包」：zip 内保存时间轴 JSON 与参考图/视频/音频。目录名为英文（`shared_params/`、`asset_groups/01/`、`Picture1`…），与切到 EN 后的界面用语对应，避免路径编码问题 |
 | **Latent 断点包** | 工具栏「导出/导入 Latent」：把当前节点的分段 AV latent（终稿 / 一采、元数据、连续性 handoff）保存为 `*.mmxlatent.zip`，可在同一时间轴上恢复批量任务 |
+| **独立 Latent 二采工作流** | `example_workflows/minimax_h3_standalone_latent_refine.json`：一采与二采共用同一份 H3 positive conditioning，二采同时输出视频和可保存的 AV latent |
 
 参考音频槽可直接选择已有视频，或从本地选择音频/视频；视频会立即提取首条音轨为 FLAC，结果直接保存到 `input/`。本地视频只在临时目录中用于提取，不会作为视频素材保存。音频沿用 ComfyUI 现有上传规则：同名同内容直接复用，同名不同内容自动添加序号且不会覆盖；当前素材组也不会重复添加同一路径。
 
@@ -51,6 +52,8 @@
 **可选：** `i2v_groups`（Image to Video 多组）/ `r2v_groups`（Reference to Video 多组）/ `refine`（`MiniMax H3 Director Refine`）
 
 **输出：** `images` → `audio` → `fps` → `frame_count` → `source_images` → `report` → `images_pre_refine`
+
+> 当前 `MiniMaxH3Director` 的确会在内部持有和缓存 AV latent，但对外输出口仍是上面这些 `IMAGE` / `AUDIO` / 报告口，没有直接的 `LATENT` 输出口。需要把 latent 接到独立二采时，请使用下面的 standalone 工作流中的 `MiniMaxH3DirectorConditioning` + 官方采样链，或使用 `MiniMax H3 Latent Load` 读取本地 latent。
 
 > CLIP Loader 的 **type 必须选 `minimax`**（Qwen3-VL）。  
 > `t2v` / `i2v` / `fl2v` 用 **fl2va** UNET；`r2v` / `v2v` / `rv2v` 用 **ref2va** UNET。
@@ -229,6 +232,12 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 10. 「分段导出」且 `passes>1` 时，每轮会另落 `seg_XXXX_pN.mp4`；「全部导出」只出一采和终稿
 
 示例：`example_workflows/minimax_h3_director_二采_加速.json`
+
+### 独立二采工作流
+
+打开 `example_workflows/minimax_h3_standalone_latent_refine.json` 即可看到完整接线：同一个 Conditioning 节点的 `positive` 一路给一采、一路给 `MiniMax H3 Latent Refine (Direct)`；一采和二采各自解码成视频，二采结果同时经过 `MiniMax H3 Latent Save` 保存。
+
+这张图里不需要复制提示词。若把二采拆到另一张工作流，latent 文件不会自动变成 H3 `CONDITIONING`；需要同时带走工作流并重新建立同一份 conditioning（包括 r2v 的参考素材），或者手动复制提示词和相关参数。
 
 ### 外部多组接线（第三方节点接入）
 

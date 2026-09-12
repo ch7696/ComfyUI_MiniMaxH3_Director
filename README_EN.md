@@ -43,6 +43,7 @@ Future features will continue on this fork's `main` branch.
 | **Run report** | `report` output with plan and per-segment summary |
 | **Director pack I/O** | Toolbar **Import pack / Export pack**: zip of timeline JSON plus reference images/videos/audio. ASCII folders (`shared_params/`, `asset_groups/01/`, `Picture1`…) match the English UI and avoid path-encoding issues |
 | **Latent checkpoint pack** | Toolbar **Import Latent / Export Latent**: portable `*.mmxlatent.zip` containing per-segment AV latents (final / first-pass), metadata, and continuity handoff |
+| **Standalone latent refine workflow** | `example_workflows/minimax_h3_standalone_latent_refine.json`: one H3 positive conditioning is reused for first and second sampling, with both video and portable AV latent outputs |
 
 Reference-audio slots can select an existing video or a local audio/video file. A video's first audio stream is extracted immediately to FLAC directly under `input/`; local source videos remain temporary and are not saved as video assets. Audio follows ComfyUI's existing upload rule: identical content with the same name is reused, while different content with the same name gets a numeric suffix without overwriting; the same resolved audio path is not added twice within one material group.
 
@@ -52,6 +53,8 @@ Reference-audio slots can select an existing video or a local audio/video file. 
 **Optional:** `i2v_groups` (Image to Video packs) / `r2v_groups` (Reference to Video packs) / `refine` (`MiniMax H3 Director Refine`)
 
 **Outputs:** `images` → `audio` → `fps` → `frame_count` → `source_images` → `report` → `images_pre_refine`
+
+> `MiniMaxH3Director` does hold and cache AV latents internally, but its public outputs are still the `IMAGE` / `AUDIO` / report ports above; it does not currently expose a direct `LATENT` port. To wire a latent into the standalone second pass, use the `MiniMaxH3DirectorConditioning` + official sampler chain in the standalone workflow, or load a saved file with `MiniMax H3 Latent Load`.
 
 > CLIP Loader **type must be `minimax`** (Qwen3-VL).  
 > Use **fl2va** UNET for `t2v` / `i2v` / `fl2v`; **ref2va** for `r2v` / `v2v` / `rv2v`.
@@ -230,6 +233,12 @@ This repo ships examples under `example_workflows/`:
 10. Segment export with `passes>1` also writes `seg_XXXX_pN.mp4` per round; export-all still only keeps first-pass and the final clip
 
 Example: `example_workflows/minimax_h3_director_二采_加速.json`
+
+### Standalone second-pass workflow
+
+Open `example_workflows/minimax_h3_standalone_latent_refine.json` for a complete graph: the same Conditioning node's `positive` output is branched to the first sampler and `MiniMax H3 Latent Refine (Direct)`. Both passes decode to video, and the second-pass latent is also written by `MiniMax H3 Latent Save`.
+
+There is no prompt duplication inside this graph. If the second pass is moved to another workflow, the latent archive does not automatically become H3 `CONDITIONING`; carry the workflow and rebuild the same conditioning (including r2v reference assets), or copy the prompt and related parameters manually.
 
 ### External multi-group wiring
 
