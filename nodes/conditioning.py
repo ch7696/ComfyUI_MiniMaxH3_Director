@@ -186,8 +186,8 @@ class MiniMaxH3DirectorConditioning:
             },
         }
 
-    RETURN_TYPES = ("CONDITIONING", "LATENT")
-    RETURN_NAMES = ("positive", "latent")
+    RETURN_TYPES = ("CONDITIONING", "LATENT", "STRING")
+    RETURN_NAMES = ("positive", "latent", "prompt")
     FUNCTION = "apply"
     CATEGORY = "MiniMaxH3"
 
@@ -205,7 +205,7 @@ class MiniMaxH3DirectorConditioning:
             ) else "t2v",
             **kwargs,
         )
-        return positive, latent
+        return positive, latent, str(prompt or "")
 
 
 class MiniMaxH3DirectorPlannerConditioning:

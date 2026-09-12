@@ -55,6 +55,8 @@
 
 > 当前 `MiniMaxH3Director` 的确会在内部持有和缓存 AV latent，但对外输出口仍是上面这些 `IMAGE` / `AUDIO` / 报告口，没有直接的 `LATENT` 输出口。需要把 latent 接到独立二采时，请使用下面的 standalone 工作流中的 `MiniMaxH3DirectorConditioning` + 官方采样链，或使用 `MiniMax H3 Latent Load` 读取本地 latent。
 
+如果希望直接从导演台把每个片段交给外部二采，在导演台的可选输入中填写 `latent_queue_name`（例如 `h3_first_pass`），并保持 `latent_queue_stage=first_pass`。导演台会按片段顺序把 AV latent 和实际使用的 prompt 写入队列；不填写队列名则完全关闭该功能。它仍然不增加可直接连线的 `LATENT` 或 `VIDEO` 口，视频输出仍按上面的 `IMAGE` + `AUDIO` → `CreateVideo` 接法。
+
 > CLIP Loader 的 **type 必须选 `minimax`**（Qwen3-VL）。  
 > `t2v` / `i2v` / `fl2v` 用 **fl2va** UNET；`r2v` / `v2v` / `rv2v` 用 **ref2va** UNET。
 
@@ -114,8 +116,33 @@ MiniMax H3 Latent Load ─────────────────┘（
 | **MiniMax H3 Latent Refine (Direct)** | `MODEL` + `CONDITIONING` + 一采输出的 H3 `LATENT`，直接执行独立二次采样；支持 sampler、scheduler、steps、CFG、seed、video/audio sigma shift 和可选外部 `SIGMAS` |
 | **MiniMax H3 Latent Save** | 将视频流和音频流分别以 safetensors 写入可移植的 `*.mmxlatent.zip`，同时把原 `LATENT` 继续传出，适合批量断点保存 |
 | **MiniMax H3 Latent Load** | 从本地仓库重新加载 AV latent，可直接接回 `Latent Refine (Direct)` 的 `latent` 口 |
+| **MiniMax H3 Latent Queue Save** | 把一个 AV latent 和它对应的提示词写进同一个有序队列包，文件名含 `0001__shot__latent`，避免 latent / prompt 错配 |
+| **MiniMax H3 Latent Queue Load** | 按编号或 `next` 游标批量读取配对记录；输出列表会被下游 ComfyUI 节点逐条映射执行 |
 
 保存位置固定为 `ComfyUI/output/minimax_h3_latents/`；`filename_prefix` 可以使用 `batch/shot_001` 这样的子目录前缀，默认不覆盖旧文件并自动编号。保存后刷新 Load 节点的文件列表即可选择。该格式同时保留 H3 的视频/音频 NestedTensor，不要把它接到只接受单一普通 tensor 的通用 latent 加载节点。
+
+### Latent + Prompt 队列（二采批量）
+
+队列节点使用单独的目录：
+
+```text
+ComfyUI/output/minimax_h3_latents/queues/<queue_name>/
+  0001__shot_01__latent.mmxlatent.zip
+  0002__shot_02__latent.mmxlatent.zip
+```
+
+`MiniMax H3 Latent Queue Save` 的 `latent` 接一采结果，`prompt_text` 接 Conditioning 节点新增的 `prompt` 输出（或者接同一个提示词 STRING）；每个包内部同时保存 prompt、可选 negative prompt 和队列编号。文件名便于人工检查，但实际配对以包内 `queue_record` 为准。
+
+二采工作流接法：
+
+```text
+Queue Load.prompt ─────────→ MiniMaxH3DirectorConditioning.prompt ─→ positive ─┐
+Queue Load.latent ──────────────────────────────────────────────────────────────→ Direct Refine
+```
+
+`Queue Load` 默认 `read_mode=next`、`batch_size=1`，每次 Queue Prompt 消耗下一条；把 `batch_size` 调大可以一次读取多条，H3 二采仍按配对列表逐条运行。要从头再来，把 `reset_token` 加 1。`read_mode=index` 可按明确编号重复读取。队列名在新文件生成后需要刷新节点输入列表。
+
+建议输出队列使用 `first_pass` / `refined` 两个不同目录，避免把一采和二采文件混在同一编号序列里。队列包会保存提示词文本，但不会序列化 ComfyUI 的 `CONDITIONING` 对象；跨工作流仍需用 prompt（以及 r2v 的参考素材）重新建立 Conditioning。
 
 如果使用外部 `BasicScheduler` / `ManualSigmas`，把它接到 Direct Refine 的 `sigmas` 口；要让 `BasicScheduler` 生成与 H3 一致的表，建议把原始 H3 `MODEL` 先接到官方 `MiniMaxH3SigmaShift`，再将 Shift 后的 MODEL 接 BasicScheduler，同时把原始 MODEL 接 Direct Refine（节点内部只再执行一次 Sigma Shift）。没有外部 `SIGMAS` 时，节点会按自身的 steps、scheduler、denoise 自动生成 sigma。
 

@@ -154,6 +154,23 @@ class MiniMaxH3Director:
                         ),
                     },
                 ),
+                "latent_queue_name": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": (
+                            "Optional. Save each segment's H3 AV latent + prompt to "
+                            "output/minimax_h3_latents/queues/<name>/. Empty = off."
+                        ),
+                    },
+                ),
+                "latent_queue_stage": (
+                    ["first_pass", "final"],
+                    {
+                        "default": "first_pass",
+                        "tooltip": "Queue the first-pass latent for an external second pass, or the final latent.",
+                    },
+                ),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -227,6 +244,8 @@ class MiniMaxH3Director:
         seed=0,
         shift_video=12.0,
         shift_audio=3.0,
+        latent_queue_name="",
+        latent_queue_stage="first_pass",
         clear_vram_between_segments=True,
         segment_memory_mode="auto",
         export_source_images=False,
@@ -266,6 +285,8 @@ class MiniMaxH3Director:
                     sigmas=sigmas,
                     shift_video=shift_video,
                     shift_audio=shift_audio,
+                    latent_queue_name=latent_queue_name,
+                    latent_queue_stage=latent_queue_stage,
                     clear_vram_between_segments=clear_vram_between_segments,
                     segment_memory_mode=segment_memory_mode,
                 )

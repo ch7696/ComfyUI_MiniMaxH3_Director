@@ -78,6 +78,8 @@ from .segment_cache import (
     save_first_pass_cache,
     save_segment_cache,
 )
+from .latent_file import save_h3_latent
+from .latent_queue import allocate_queue_archive, new_queue_record
 from .segment_mp4_export import (
     copy_segment_mp4_suffix,
     maybe_export_segment_mp4,
@@ -397,6 +399,8 @@ def execute_director_plan_core(
     sigmas=None,
     shift_video: float = 12.0,
     shift_audio: float = 3.0,
+    latent_queue_name: str = "",
+    latent_queue_stage: str = "first_pass",
     clear_vram_between_segments: bool = True,
     segment_memory_mode: str = "auto",
 ) -> tuple[
@@ -586,6 +590,7 @@ def execute_director_plan_core(
     completed_first_pass_av: dict[int, dict] = {}
     completed_av_handoff: dict[int, dict] = {}
     completed_audios: dict[int, dict] = {}
+    completed_queue_prompts: dict[int, str] = {}
     # Kept separately from the rolling continuity set so a timeline-wide
     # upscale still has every first-pass latent after segment N finishes.
     deferred_latent_upscale: dict[int, dict] = {}
@@ -804,6 +809,11 @@ def execute_director_plan_core(
             positive_prompt = reinforce_rv2v_prompt(
                 positive_prompt, ref_indices=ref_idxs, audio_indices=audio_idxs,
             )
+
+        # Keep the exact prompt sent to the official H3 conditioning node for
+        # optional cross-workflow queue export. Cached/fill-only segments fall
+        # back to seg.prompt when the export is assembled below.
+        completed_queue_prompts[seg.index] = str(positive_prompt or "")
 
         report_director_progress(
             node_id, segment_index=progress_index, segment_total=seg_total,
@@ -1876,6 +1886,80 @@ def execute_director_plan_core(
             combined
             if same_as_final
             else concat_continuous_chunks(pre_source, export_segments, plan)
+        )
+
+    queue_name = str(latent_queue_name or "").strip()
+    if queue_name:
+        stage = str(latent_queue_stage or "first_pass").strip().lower()
+        if stage not in {"first_pass", "final"}:
+            stage = "first_pass"
+        latent_map = completed_first_pass_av if stage == "first_pass" else completed_av_latents
+        queue_saved = 0
+        queue_skipped = 0
+        for seg in export_segments:
+            latent = latent_map.get(seg.index)
+            if latent is None:
+                if stage == "first_pass":
+                    latent = load_first_pass_av_latent(node_id, seg, plan)
+                else:
+                    latent = load_segment_av_latent(node_id, seg, plan)
+            if latent is None and stage == "first_pass":
+                # A single-pass Director has no separate first-pass cache; its
+                # final latent is the first pass as well.
+                latent = completed_av_latents.get(seg.index)
+                if latent is None:
+                    latent = load_segment_av_latent(node_id, seg, plan)
+            if latent is None:
+                queue_skipped += 1
+                reports.append(
+                    f"Latent queue: skipped segment {seg.timeline_index + 1} "
+                    "(no H3 AV latent in memory or disk cache)."
+                )
+                continue
+            try:
+                destination, queue_index, record_id = allocate_queue_archive(
+                    queue_name,
+                    f"segment_{seg.timeline_index + 1:04d}_{stage}",
+                    queue_index=0,
+                    overwrite=False,
+                )
+                record = new_queue_record(
+                    queue_name=queue_name,
+                    queue_index=queue_index,
+                    record_id=record_id,
+                    item_name=f"segment_{seg.timeline_index + 1:04d}_{stage}",
+                    prompt=completed_queue_prompts.get(seg.index, seg.prompt),
+                    negative_prompt=seg.negative_prompt,
+                    task_key=seg.task_key,
+                    width=plan.width,
+                    height=plan.height,
+                    length=seg.frame_count,
+                )
+                save_h3_latent(
+                    latent,
+                    destination,
+                    metadata={
+                        "queue_record": record,
+                        "queue_prompt": record["prompt"],
+                        "director_segment_index": int(seg.index),
+                        "director_timeline_index": int(seg.timeline_index),
+                        "director_stage": stage,
+                    },
+                )
+                queue_saved += 1
+                reports.append(
+                    f"Latent queue: saved segment {seg.timeline_index + 1} "
+                    f"({stage}) → {destination}"
+                )
+            except Exception as exc:
+                queue_skipped += 1
+                reports.append(
+                    f"Latent queue: FAILED segment {seg.timeline_index + 1} "
+                    f"({type(exc).__name__}: {exc})"
+                )
+        reports.append(
+            f"Latent queue summary: {queue_saved} saved, {queue_skipped} skipped/failed "
+            f"→ output/minimax_h3_latents/queues/{queue_name}/"
         )
     return (
         combined,

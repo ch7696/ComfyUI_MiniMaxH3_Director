@@ -56,6 +56,8 @@ Reference-audio slots can select an existing video or a local audio/video file. 
 
 > `MiniMaxH3Director` does hold and cache AV latents internally, but its public outputs are still the `IMAGE` / `AUDIO` / report ports above; it does not currently expose a direct `LATENT` port. To wire a latent into the standalone second pass, use the `MiniMaxH3DirectorConditioning` + official sampler chain in the standalone workflow, or load a saved file with `MiniMax H3 Latent Load`.
 
+To export every Director segment for an external second pass, fill the optional `latent_queue_name` input (for example, `h3_first_pass`) and leave `latent_queue_stage=first_pass`. The Director writes each segment's AV latent and effective prompt in segment order; leaving the queue name empty disables it. This still does not add a direct `LATENT` or `VIDEO` socket: video remains `IMAGE` + `AUDIO` → `CreateVideo`.
+
 > CLIP Loader **type must be `minimax`** (Qwen3-VL).  
 > Use **fl2va** UNET for `t2v` / `i2v` / `fl2v`; **ref2va** for `r2v` / `v2v` / `rv2v`.
 
@@ -115,8 +117,33 @@ MiniMax H3 Latent Load ─────────────────┘ (r
 | **MiniMax H3 Latent Refine (Direct)** | Accepts `MODEL` + `CONDITIONING` + the first sampler's H3 `LATENT` and runs an independent second sampling pass. Supports sampler, scheduler, steps, CFG, seed, video/audio sigma shift, and optional external `SIGMAS`. |
 | **MiniMax H3 Latent Save** | Writes video and audio streams as safetensors inside a portable `*.mmxlatent.zip`, while passing the same `LATENT` through for batch checkpoints. |
 | **MiniMax H3 Latent Load** | Loads an AV latent from the local store so it can be wired back into `Latent Refine (Direct)`. |
+| **MiniMax H3 Latent Queue Save** | Stores one AV latent and its matching prompt in the same ordered queue archive, with a visible `0001__shot__latent` filename. |
+| **MiniMax H3 Latent Queue Load** | Reads paired records by index or a persistent `next` cursor; list outputs are mapped item-by-item by downstream ComfyUI nodes. |
 
 Files are stored under `ComfyUI/output/minimax_h3_latents/`. `filename_prefix` accepts subfolders such as `batch/shot_001`; existing files are preserved and automatically numbered by default. Refresh the Load node's file list after saving. The format preserves H3's video/audio NestedTensor, so it should not be routed through a generic loader that only handles one regular tensor.
+
+### Latent + prompt queue for batch refine
+
+Queue archives are stored under:
+
+```text
+ComfyUI/output/minimax_h3_latents/queues/<queue_name>/
+  0001__shot_01__latent.mmxlatent.zip
+  0002__shot_02__latent.mmxlatent.zip
+```
+
+Connect the first-pass latent to **MiniMax H3 Latent Queue Save** and connect `prompt_text` to the new `prompt` output of **MiniMax H3 Director Conditioning** (or to the same prompt STRING). Each archive contains the prompt, optional negative prompt, and queue ID. The embedded `queue_record` is authoritative for pairing; the filename is for human inspection.
+
+For the second-pass workflow:
+
+```text
+Queue Load.prompt ───────→ MiniMaxH3DirectorConditioning.prompt ─→ positive ─┐
+Queue Load.latent ────────────────────────────────────────────────────────────→ Direct Refine
+```
+
+`Queue Load` defaults to `read_mode=next` and `batch_size=1`; each Queue Prompt consumes the next pair. Increase `batch_size` to read several records at once—the H3 refine node still processes the paired list item-by-item. Increase `reset_token` to restart, or use `read_mode=index` for deterministic re-runs. Refresh the node input list after creating a new queue name.
+
+Use separate `first_pass` and `refined` queue names so first- and second-pass files do not share an index sequence. Prompt text is preserved, but ComfyUI `CONDITIONING` objects are not serialized; a separate workflow must rebuild Conditioning and reconnect r2v reference media.
 
 When using an external `BasicScheduler` / `ManualSigmas`, connect it to Direct Refine's `sigmas` input. For an H3-compatible `BasicScheduler` table, feed the raw H3 `MODEL` through the official `MiniMaxH3SigmaShift` and connect that shifted MODEL to BasicScheduler, while sending the raw MODEL to Direct Refine (the node applies Sigma Shift once internally). Without external `SIGMAS`, the node builds the schedule from its own steps, scheduler, and denoise settings.
 

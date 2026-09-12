@@ -13,6 +13,7 @@
 | `minimax_h3_director_external_groups_r2v.json` | r2v | **ref2va** | 外部 Group（Reference to Video）→ Combine → Director.`r2v_groups`；可用「选择运行」勾选组序 |
 | `minimax_h3_director_二采_加速.json` | r2v | **ref2va** | 外接 **MiniMax H3 Director Refine** → Director.`refine`（SIGMAS + H3 latent）。`images` 为二采后成片，`images_pre_refine` 为一采对比片 |
 | `minimax_h3_standalone_latent_refine.json` | t2v | fl2va | 独立一采 → Direct Latent 二采；同一份 positive conditioning 分支复用；输出一采/二采视频并保存二采 AV latent |
+| `minimax_h3_latent_queue_refine.json` | t2v | fl2va | Queue Load 按批次读取 latent+prompt → 重建 Conditioning → Direct 二采；同时保存 refined 队列 |
 
 ## 模型路径（与官方模板一致）
 
@@ -62,3 +63,20 @@ MiniMaxH3DirectorConditioning
 ```
 
 同一张工作流内不需要复制提示词；拆到另一张工作流时，需要重新建立 positive conditioning，r2v 还要重新接参考素材。
+
+### Latent + Prompt 队列
+
+新增 **MiniMax H3 Latent Queue Save / Load**：
+
+```text
+一采 H3 AV LATENT + Conditioning.prompt
+        └→ Queue Save → output/minimax_h3_latents/queues/<name>/0001__shot__latent.mmxlatent.zip
+
+Queue Load (next / index, batch_size)
+        ├→ prompt → MiniMaxH3DirectorConditioning.prompt
+        └→ latent → MiniMax H3 Latent Refine (Direct)
+```
+
+每个队列包内嵌一个 `queue_record`，包括 prompt、编号和文件标识；读取器始终成对输出，不按两个独立文件列表拼接。`next` 模式每次 Queue Prompt 顺序消费，`reset_token` 加 1 可重置游标；默认一次一条，适合无卡启动和显存有限的 H3 二采。
+
+导演台也可以直接填写可选输入 `latent_queue_name`（如 `h3_first_pass`）自动按片段导出一采队列；`latent_queue_stage=final` 则导出导演台已经完成的终稿 latent。未填写队列名时，导演台行为不变。

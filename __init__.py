@@ -19,6 +19,8 @@ from .nodes.latent_workflow import (
     MiniMaxH3LatentLoad,
     MiniMaxH3LatentRefine,
     MiniMaxH3LatentSave,
+    MiniMaxH3LatentQueueLoad,
+    MiniMaxH3LatentQueueSave,
 )
 
 NODE_CLASS_MAPPINGS = {
@@ -36,6 +38,8 @@ NODE_CLASS_MAPPINGS = {
     "MiniMaxH3LatentRefine": MiniMaxH3LatentRefine,
     "MiniMaxH3LatentSave": MiniMaxH3LatentSave,
     "MiniMaxH3LatentLoad": MiniMaxH3LatentLoad,
+    "MiniMaxH3LatentQueueSave": MiniMaxH3LatentQueueSave,
+    "MiniMaxH3LatentQueueLoad": MiniMaxH3LatentQueueLoad,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -50,6 +54,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3LatentRefine": "MiniMax H3 Latent Refine (Direct)",
     "MiniMaxH3LatentSave": "MiniMax H3 Latent Save",
     "MiniMaxH3LatentLoad": "MiniMax H3 Latent Load",
+    "MiniMaxH3LatentQueueSave": "MiniMax H3 Latent Queue Save",
+    "MiniMaxH3LatentQueueLoad": "MiniMax H3 Latent Queue Load",
 }
 
 WEB_DIRECTORY = "./web/js"

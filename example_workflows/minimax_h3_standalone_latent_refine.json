@@ -1,6 +1,6 @@
 {
-  "last_node_id": 22,
-  "last_link_id": 30,
+  "last_node_id": 23,
+  "last_link_id": 32,
   "nodes": [
     {
       "id": 1,
@@ -84,7 +84,8 @@
       ],
       "outputs": [
         {"name": "positive", "type": "CONDITIONING", "links": [7, 14]},
-        {"name": "latent", "type": "LATENT", "links": [12]}
+        {"name": "latent", "type": "LATENT", "links": [12]},
+        {"name": "prompt", "type": "STRING", "links": [31]}
       ],
       "properties": {"Node name for S&R": "MiniMaxH3DirectorConditioning"},
       "widgets_values": [
@@ -197,7 +198,7 @@
         {"name": "latent_image", "type": "LATENT", "link": 12}
       ],
       "outputs": [
-        {"name": "output", "type": "LATENT", "links": [15, 16, 18]},
+        {"name": "output", "type": "LATENT", "links": [15, 16, 18, 32]},
         {"name": "denoised_output", "type": "LATENT", "links": []}
       ],
       "properties": {"Node name for S&R": "SamplerCustomAdvanced"},
@@ -367,7 +368,7 @@
       "pos": [1320, 540],
       "size": [430, 150],
       "flags": {},
-      "order": 20,
+      "order": 21,
       "mode": 0,
       "inputs": [
         {"name": "latent", "type": "LATENT", "link": 30},
@@ -383,22 +384,48 @@
       "widgets_values_named": {"filename_prefix": "batch/h3_refined", "overwrite": false}
     },
     {
+      "id": 23,
+      "type": "MiniMaxH3LatentQueueSave",
+      "pos": [850, 940],
+      "size": [470, 250],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {"name": "latent", "type": "LATENT", "link": 32},
+        {"name": "prompt_text", "type": "STRING", "link": 31},
+        {"name": "queue_name", "type": "STRING", "widget": {"name": "queue_name"}, "link": null},
+        {"name": "item_name", "type": "STRING", "widget": {"name": "item_name"}, "link": null},
+        {"name": "queue_index", "type": "INT", "widget": {"name": "queue_index"}, "link": null},
+        {"name": "overwrite", "type": "BOOLEAN", "widget": {"name": "overwrite"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "latent", "type": "LATENT", "links": []},
+        {"name": "prompt", "type": "STRING", "links": []},
+        {"name": "record_id", "type": "STRING", "links": []},
+        {"name": "path", "type": "STRING", "links": []}
+      ],
+      "properties": {"Node name for S&R": "MiniMaxH3LatentQueueSave"},
+      "widgets_values": ["h3_first_pass", "shot", 0, false],
+      "widgets_values_named": {"queue_name": "h3_first_pass", "item_name": "shot", "queue_index": 0, "overwrite": false}
+    },
+    {
       "id": 22,
       "type": "MarkdownNote",
       "pos": [850, 40],
       "size": [520, 180],
       "flags": {},
-      "order": 21,
+      "order": 22,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "properties": {},
       "title": "H3 独立二采说明",
       "widgets_values": [
-        "## 独立 H3 二采\n\n一采的 positive CONDITIONING 同时接入一采和二采，不需要复制提示词。\n\n- 一采结果：`h3_first_pass.mp4`\n- 二采结果：`h3_refined.mp4`\n- latent：`output/minimax_h3_latents/batch/`\n\n切换到另一个工作流时，latent 文件本身不会恢复 CONDITIONING；请同时保存本工作流，或重新建立同一份 H3 conditioning。"
+        "## 独立 H3 二采\n\n一采的 positive CONDITIONING 同时接入一采和二采，不需要复制提示词。\n\n- 一采结果：`h3_first_pass.mp4`\n- 二采结果：`h3_refined.mp4`\n- latent：`output/minimax_h3_latents/batch/`\n- 队列：`output/minimax_h3_latents/queues/h3_first_pass/`\n\n切换到另一个工作流时，latent 文件本身不会恢复 CONDITIONING；队列包会保存配对 prompt，读取后重新建立 Conditioning。"
       ],
       "widgets_values_named": {
-        "text": "## 独立 H3 二采\n\n一采的 positive CONDITIONING 同时接入一采和二采，不需要复制提示词。\n\n- 一采结果：`h3_first_pass.mp4`\n- 二采结果：`h3_refined.mp4`\n- latent：`output/minimax_h3_latents/batch/`\n\n切换到另一个工作流时，latent 文件本身不会恢复 CONDITIONING；请同时保存本工作流，或重新建立同一份 H3 conditioning。"
+        "text": "## 独立 H3 二采\n\n一采的 positive CONDITIONING 同时接入一采和二采，不需要复制提示词。\n\n- 一采结果：`h3_first_pass.mp4`\n- 二采结果：`h3_refined.mp4`\n- latent：`output/minimax_h3_latents/batch/`\n- 队列：`output/minimax_h3_latents/queues/h3_first_pass/`\n\n切换到另一个工作流时，latent 文件本身不会恢复 CONDITIONING；队列包会保存配对 prompt，读取后重新建立 Conditioning。"
       }
     }
   ],
@@ -432,10 +459,12 @@
     [27, 17, 0, 19, 0, "IMAGE"],
     [28, 18, 0, 19, 1, "AUDIO"],
     [29, 19, 0, 20, 0, "VIDEO"],
-    [30, 12, 0, 21, 0, "LATENT"]
+    [30, 12, 0, 21, 0, "LATENT"],
+    [31, 5, 2, 23, 1, "STRING"],
+    [32, 11, 0, 23, 0, "LATENT"]
   ],
   "groups": [],
   "config": {},
-  "extra": {"note": "MiniMax H3 standalone latent refine: reuse positive conditioning in one workflow."},
+  "extra": {"note": "MiniMax H3 standalone latent refine: reuse positive conditioning in one workflow and append first-pass latent+prompt pairs to h3_first_pass queue."},
   "version": 0.4
 }
