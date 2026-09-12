@@ -1,11 +1,25 @@
 # ComfyUI MiniMax H3 Director
 
 Multi-segment AV timeline director for **official ComfyUI MiniMax-H3**.  
-Repository: [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director)
+This development mirror is maintained by [ch7696](https://github.com/ch7696), based on upstream [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director).
+
+- **Maintained fork:** [ch7696/ComfyUI_MiniMaxH3_Director](https://github.com/ch7696/ComfyUI_MiniMaxH3_Director)
+- **Version note:** upstream `main` was synced first; this round of performance work and future development is maintained by `ch7696`.
 
 **中文文档** → [README.md](README.md)
 
 ![MiniMaxH3Director workflow screenshot](docs/screenshot.png)
+
+## Maintenance note
+
+This version was updated by GitHub user [ch7696](https://github.com/ch7696). It preserves the upstream feature set and adds:
+
+- sequential decoding for nearby timeline video frames to reduce repeated random seeks;
+- VRAM-aware model cleanup between segments;
+- per-execution memoization of source-video identity checks;
+- a bounded timeline thumbnail prefetch queue to avoid request bursts and UI jank.
+
+Future features will continue on this fork's `main` branch.
 
 ## Features
 
@@ -83,7 +97,7 @@ Refine `nvidia_rtx_vsr` needs an NVIDIA GPU: `pip install nvidia-vfx --extra-ind
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
+git clone https://github.com/ch7696/ComfyUI_MiniMaxH3_Director.git
 
 pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 ```
@@ -94,7 +108,7 @@ Restart ComfyUI.
 
 1. Open **ComfyUI Manager**
 2. Choose **Install via Git URL**
-3. Enter `https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git` and install
+3. Enter `https://github.com/ch7696/ComfyUI_MiniMaxH3_Director.git` and install
 4. Restart ComfyUI
 
 ## Models & workflow downloads
@@ -211,8 +225,11 @@ Mirror the two official conditioning nodes and feed **multi-group** batches into
 
 | | |
 |---|---|
-| **Maintainer** | [AIMixer](https://github.com/AIMixer) |
-| **Repository** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
+| **Current maintainer** | [ch7696](https://github.com/ch7696) |
+| **This update** | `ch7696`: upstream sync and performance optimization |
+| **Upstream author / maintainer** | [AIMixer](https://github.com/AIMixer) |
+| **Maintained fork** | [github.com/ch7696/ComfyUI_MiniMaxH3_Director](https://github.com/ch7696/ComfyUI_MiniMaxH3_Director) |
+| **Upstream repository** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
 | **Sibling plugin** | [ComfyUI_Bernini_Director](https://github.com/AIMixer/ComfyUI_Bernini_Director) |
 | **Author QQ** | **3697688140** |
 | **Bilibili** | [space.bilibili.com/1997403556](https://space.bilibili.com/1997403556) |

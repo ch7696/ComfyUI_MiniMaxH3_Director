@@ -1,10 +1,24 @@
 # ComfyUI MiniMax H3 Director
 
-基于 **ComfyUI 官方 MiniMax-H3** 的多段音视频导演台插件。仓库地址：[AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director)
+基于 **ComfyUI 官方 MiniMax-H3** 的多段音视频导演台插件。本仓库是由 [ch7696](https://github.com/ch7696) 维护的开发镜像，基于上游 [AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) 持续更新。
+
+- **当前维护仓库：** [ch7696/ComfyUI_MiniMaxH3_Director](https://github.com/ch7696/ComfyUI_MiniMaxH3_Director)
+- **本次版本说明：** 先同步上游主分支，再由 `ch7696` 完成本轮性能优化与后续开发。
 
 **English** → [README_EN.md](README_EN.md)
 
 ![MiniMaxH3Director 工作流截图](docs/screenshot.png)
+
+## 当前维护说明
+
+本版本更新者为 GitHub 用户 [ch7696](https://github.com/ch7696)。在保留上游功能和作者信息的基础上，本分支已加入：
+
+- 视频时间线附近帧顺序解码，减少重复随机 seek；
+- 根据 VRAM 状态自动选择分段模型清理策略；
+- 单次执行内缓存源视频身份信息，减少重复文件状态查询；
+- 限制时间线缩略图预取队列，避免大量并发请求造成界面卡顿。
+
+后续功能将在该 fork 的 `main` 分支继续开发。
 
 ## 功能介绍
 
@@ -82,7 +96,7 @@ Refine 的 `nvidia_rtx_vsr` 另需 NVIDIA GPU，可 `pip install nvidia-vfx --ex
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git
+git clone https://github.com/ch7696/ComfyUI_MiniMaxH3_Director.git
 
 pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 ```
@@ -93,7 +107,7 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 
 1. 打开 **ComfyUI Manager**
 2. 选择 **Install via Git URL**
-3. 填入 `https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director.git` 并安装
+3. 填入 `https://github.com/ch7696/ComfyUI_MiniMaxH3_Director.git` 并安装
 4. 重启 ComfyUI
 
 ## 模型与工作流下载
@@ -210,8 +224,11 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 
 | | |
 |---|---|
-| **维护者** | [AI搅拌手 / AIMixer](https://github.com/AIMixer) |
-| **本仓库** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
+| **当前维护者** | [ch7696](https://github.com/ch7696) |
+| **本次更新** | `ch7696`：同步上游并完成性能优化 |
+| **上游作者 / 原维护者** | [AI搅拌手 / AIMixer](https://github.com/AIMixer) |
+| **当前维护仓库** | [github.com/ch7696/ComfyUI_MiniMaxH3_Director](https://github.com/ch7696/ComfyUI_MiniMaxH3_Director) |
+| **上游仓库** | [github.com/AIMixer/ComfyUI_MiniMaxH3_Director](https://github.com/AIMixer/ComfyUI_MiniMaxH3_Director) |
 | **姊妹插件** | [ComfyUI_Bernini_Director](https://github.com/AIMixer/ComfyUI_Bernini_Director) |
 | **作者 QQ** | **3697688140** |
 | **B 站** | [space.bilibili.com/1997403556](https://space.bilibili.com/1997403556) |
