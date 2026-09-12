@@ -312,26 +312,67 @@ def load_video_resampled(
     decoded: dict[int, np.ndarray] = {}
     fallback: np.ndarray | None = None
 
+    # A director segment normally requests a contiguous range at the target
+    # frame rate. Seeking once per requested frame is particularly expensive
+    # with OpenCV/FFmpeg because every ``cap.set`` may flush and rebuild the
+    # decoder state. Keep sparse requests random-access, but decode nearby
+    # native frames in one forward pass. The cap keeps the exact same native
+    # frame mapping as the old path; only the way we reach that frame changes.
+    native_by_source = {
+        src_idx: int(
+            round(max(0.0, src_idx / float(frame_rate or 24.0)) * native_fps)
+        )
+        for src_idx in unique
+    }
+    native_to_sources: dict[int, list[int]] = {}
     for src_idx in unique:
-        t_sec = max(0.0, src_idx / float(frame_rate or 24.0))
-        native_frame = int(round(t_sec * native_fps))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, native_frame)
-        ok, bgr = cap.read()
-        if not ok or bgr is None:
-            log.warning("Failed to read frame %d (t=%.3fs) from %s", native_frame, t_sec, path)
-            if fallback is not None:
-                decoded[src_idx] = fallback
-            continue
+        native_to_sources.setdefault(native_by_source[src_idx], []).append(src_idx)
 
-        if rotate_90_cw:
-            bgr = cv2.rotate(bgr, cv2.ROTATE_90_CLOCKWISE)
-        if (bgr.shape[1], bgr.shape[0]) != (out_w, out_h):
-            bgr = cv2.resize(bgr, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-        decoded[src_idx] = rgb
-        fallback = rgb
+    native_positions = sorted(native_to_sources)
+    if native_positions:
+        # Do not turn very sparse sampling (for example one frame per second)
+        # into a full-video scan. For normal 24/25/30 fps material this joins
+        # the 1-2 native-frame gaps produced by resampling.
+        native_per_target = native_fps / float(frame_rate or 24.0)
+        max_sequential_gap = max(2, min(8, int(round(native_per_target * 2.0))))
+        runs: list[tuple[int, int]] = []
+        run_start = run_end = native_positions[0]
+        for native_frame in native_positions[1:]:
+            if native_frame - run_end <= max_sequential_gap:
+                run_end = native_frame
+            else:
+                runs.append((run_start, run_end))
+                run_start = run_end = native_frame
+        runs.append((run_start, run_end))
 
-    cap.release()
+        def _convert_frame(bgr: np.ndarray) -> np.ndarray:
+            if rotate_90_cw:
+                bgr = cv2.rotate(bgr, cv2.ROTATE_90_CLOCKWISE)
+            if (bgr.shape[1], bgr.shape[0]) != (out_w, out_h):
+                bgr = cv2.resize(bgr, (out_w, out_h), interpolation=cv2.INTER_AREA)
+            return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
+        try:
+            for run_start, run_end in runs:
+                if not cap.set(cv2.CAP_PROP_POS_FRAMES, run_start):
+                    log.debug("Could not seek to frame %d in %s", run_start, path)
+                current_native = run_start
+                while current_native <= run_end:
+                    ok, bgr = cap.read()
+                    if not ok or bgr is None:
+                        log.warning(
+                            "Failed to read frame %d from %s", current_native, path
+                        )
+                        break
+                    source_indices = native_to_sources.get(current_native)
+                    if source_indices:
+                        rgb = _convert_frame(bgr)
+                        for src_idx in source_indices:
+                            decoded[src_idx] = rgb
+                        fallback = rgb
+                    current_native += 1
+        finally:
+            cap.release()
 
     if not decoded:
         raise ValueError(f"No frames decoded from video: {path}")
