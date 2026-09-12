@@ -95,6 +95,27 @@ timeline.json
 - Latent 包只保存缓存，不包含 UNET、CLIP、VAE 或参考素材；跨机器使用时仍需准备相同模型和导演包素材。
 - 需要在 ComfyUI 的虚拟环境中安装 `safetensors`（通常 ComfyUI 已自带）：`pip install safetensors`。
 
+## 独立工作流节点：直接二采与本地 Latent
+
+这组节点不依赖 `MiniMaxH3Director` 的时间轴、分段缓存或导演台 UI，适合把官方 H3 工作流拆成可复用的批处理链：
+
+```text
+官方 H3 Conditioning / 一采采样
+        └─ H3 AV LATENT → MiniMax H3 Latent Refine (Direct) → VAE 解码 / 下一次采样
+                                      └→ MiniMax H3 Latent Save
+MiniMax H3 Latent Load ─────────────────┘（从本地 latent 继续二采）
+```
+
+| 节点 | 用途 |
+|------|------|
+| **MiniMax H3 Latent Refine (Direct)** | `MODEL` + `CONDITIONING` + 一采输出的 H3 `LATENT`，直接执行独立二次采样；支持 sampler、scheduler、steps、CFG、seed、video/audio sigma shift 和可选外部 `SIGMAS` |
+| **MiniMax H3 Latent Save** | 将视频流和音频流分别以 safetensors 写入可移植的 `*.mmxlatent.zip`，同时把原 `LATENT` 继续传出，适合批量断点保存 |
+| **MiniMax H3 Latent Load** | 从本地仓库重新加载 AV latent，可直接接回 `Latent Refine (Direct)` 的 `latent` 口 |
+
+保存位置固定为 `ComfyUI/output/minimax_h3_latents/`；`filename_prefix` 可以使用 `batch/shot_001` 这样的子目录前缀，默认不覆盖旧文件并自动编号。保存后刷新 Load 节点的文件列表即可选择。该格式同时保留 H3 的视频/音频 NestedTensor，不要把它接到只接受单一普通 tensor 的通用 latent 加载节点。
+
+如果使用外部 `BasicScheduler` / `ManualSigmas`，把它接到 Direct Refine 的 `sigmas` 口；要让 `BasicScheduler` 生成与 H3 一致的表，建议把原始 H3 `MODEL` 先接到官方 `MiniMaxH3SigmaShift`，再将 Shift 后的 MODEL 接 BasicScheduler，同时把原始 MODEL 接 Direct Refine（节点内部只再执行一次 Sigma Shift）。没有外部 `SIGMAS` 时，节点会按自身的 steps、scheduler、denoise 自动生成 sigma。
+
 ## 依赖
 
 请将 **ComfyUI** 升级到 **v0.30.0** 及以上（含官方 MiniMax H3 节点：[PR #15224](https://github.com/comfyanonymous/ComfyUI/pull/15224)、[PR #15228](https://github.com/comfyanonymous/ComfyUI/pull/15228)）。

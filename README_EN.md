@@ -96,6 +96,27 @@ Toolbar **Export Latent / Import Latent** targets the current Director node's pe
 - The archive contains cache data only, not UNET / CLIP / VAE weights or reference media. Prepare the same models and Director pack assets on the target machine.
 - Install `safetensors` in the ComfyUI virtual environment if it is missing (ComfyUI usually includes it): `pip install safetensors`.
 
+## Standalone workflow nodes: direct latent refine and local checkpoints
+
+These nodes are independent of the `MiniMaxH3Director` timeline, segment cache, and Director UI. They are intended for reusable and batch workflows:
+
+```text
+Official H3 conditioning / first sampler
+        └─ H3 AV LATENT → MiniMax H3 Latent Refine (Direct) → VAE decode / next pass
+                                      └→ MiniMax H3 Latent Save
+MiniMax H3 Latent Load ─────────────────┘ (resume a second pass from disk)
+```
+
+| Node | Purpose |
+|------|---------|
+| **MiniMax H3 Latent Refine (Direct)** | Accepts `MODEL` + `CONDITIONING` + the first sampler's H3 `LATENT` and runs an independent second sampling pass. Supports sampler, scheduler, steps, CFG, seed, video/audio sigma shift, and optional external `SIGMAS`. |
+| **MiniMax H3 Latent Save** | Writes video and audio streams as safetensors inside a portable `*.mmxlatent.zip`, while passing the same `LATENT` through for batch checkpoints. |
+| **MiniMax H3 Latent Load** | Loads an AV latent from the local store so it can be wired back into `Latent Refine (Direct)`. |
+
+Files are stored under `ComfyUI/output/minimax_h3_latents/`. `filename_prefix` accepts subfolders such as `batch/shot_001`; existing files are preserved and automatically numbered by default. Refresh the Load node's file list after saving. The format preserves H3's video/audio NestedTensor, so it should not be routed through a generic loader that only handles one regular tensor.
+
+When using an external `BasicScheduler` / `ManualSigmas`, connect it to Direct Refine's `sigmas` input. For an H3-compatible `BasicScheduler` table, feed the raw H3 `MODEL` through the official `MiniMaxH3SigmaShift` and connect that shifted MODEL to BasicScheduler, while sending the raw MODEL to Direct Refine (the node applies Sigma Shift once internally). Without external `SIGMAS`, the node builds the schedule from its own steps, scheduler, and denoise settings.
+
 ## Requirements
 
 **ComfyUI ≥ v0.30.0** with official MiniMax H3 nodes ([PR #15224](https://github.com/comfyanonymous/ComfyUI/pull/15224), [PR #15228](https://github.com/comfyanonymous/ComfyUI/pull/15228)).

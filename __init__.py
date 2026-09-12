@@ -15,6 +15,11 @@ from .nodes.director_groups import (
     MiniMaxH3DirectorGroupReferenceToVideo,
     MiniMaxH3DirectorGroupsCombine,
 )
+from .nodes.latent_workflow import (
+    MiniMaxH3LatentLoad,
+    MiniMaxH3LatentRefine,
+    MiniMaxH3LatentSave,
+)
 
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3Director": MiniMaxH3Director,
@@ -28,6 +33,9 @@ NODE_CLASS_MAPPINGS = {
     # Must stay in NODE_CLASS_MAPPINGS: ComfyUI skips comfy_entrypoint when
     # NODE_CLASS_MAPPINGS is present (if/elif in load_custom_node).
     "MiniMaxH3DirectorGroupsCombine": MiniMaxH3DirectorGroupsCombine,
+    "MiniMaxH3LatentRefine": MiniMaxH3LatentRefine,
+    "MiniMaxH3LatentSave": MiniMaxH3LatentSave,
+    "MiniMaxH3LatentLoad": MiniMaxH3LatentLoad,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -39,6 +47,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3DirectorGroupImageToVideo": "MiniMax H3 Director Group (Image to Video)",
     "MiniMaxH3DirectorGroupReferenceToVideo": "MiniMax H3 Director Group (Reference to Video)",
     "MiniMaxH3DirectorGroupsCombine": "MiniMax H3 Director Groups Combine",
+    "MiniMaxH3LatentRefine": "MiniMax H3 Latent Refine (Direct)",
+    "MiniMaxH3LatentSave": "MiniMax H3 Latent Save",
+    "MiniMaxH3LatentLoad": "MiniMax H3 Latent Load",
 }
 
 WEB_DIRECTORY = "./web/js"
