@@ -140,6 +140,8 @@ const THUMB_JPEG_Q = 0.55;
 const TIMELINE_SYNC_DEBOUNCE_MS = 500;
 const MAX_THUMBS_PER_SEGMENT = 20;
 const THUMB_PREFETCH_BATCH = 6;
+const THUMB_PREFETCH_CONCURRENCY = 1;
+const THUMB_PREFETCH_QUEUE_MAX = 256;
 const DIRECTOR_MIN_WIDTH = 900;
 const COMFY_UPLOAD_SOFT_LIMIT = 95 * 1024 * 1024;
 const MINIMAX_CHUNK_SIZE = 8 * 1024 * 1024;
@@ -2082,6 +2084,8 @@ class MiniMaxH3DirectorEditor {
         this._isHovering = false;
         this._thumbCache = new Map();
         this._thumbPending = new Set();
+        this._thumbQueue = [];
+        this._thumbActive = 0;
         this._seekChain = Promise.resolve();
         this._legacyFrames = [];
         this._storageWidth = 0;
@@ -3885,6 +3889,7 @@ class MiniMaxH3DirectorEditor {
     _invalidateVideoThumbs() {
         this._thumbCache.clear();
         this._thumbPending.clear();
+        this._thumbQueue.length = 0;
     }
 
     _usesSourceVideoThumbs() {
@@ -7118,15 +7123,32 @@ class MiniMaxH3DirectorEditor {
         if (this._thumbCache.has(cacheKey) || this._thumbPending.has(cacheKey)) return;
         if (!this.hasVideo() && !this._legacyFrames.length) return;
         this._thumbPending.add(cacheKey);
-        this._fetchThumb(logicalFrame).then((img) => {
-            this._thumbPending.delete(cacheKey);
-            if (!img) return;
-            if (this._frameThumbKey(logicalFrame) !== cacheKey) return;
-            this._thumbCache.set(cacheKey, img);
-            this.scheduleRender();
-        }).catch(() => {
-            this._thumbPending.delete(cacheKey);
-        });
+        if (this._thumbQueue.length >= THUMB_PREFETCH_QUEUE_MAX) {
+            const dropped = this._thumbQueue.shift();
+            if (dropped) this._thumbPending.delete(dropped.cacheKey);
+        }
+        this._thumbQueue.push({ logicalFrame, cacheKey });
+        this._drainThumbPrefetch();
+    }
+
+    _drainThumbPrefetch() {
+        while (this._thumbActive < THUMB_PREFETCH_CONCURRENCY && this._thumbQueue.length) {
+            const job = this._thumbQueue.shift();
+            if (!job || !this._thumbPending.has(job.cacheKey) || this._thumbCache.has(job.cacheKey)) {
+                continue;
+            }
+            this._thumbActive += 1;
+            this._fetchThumb(job.logicalFrame).then((img) => {
+                if (!img) return;
+                if (this._frameThumbKey(job.logicalFrame) !== job.cacheKey) return;
+                this._thumbCache.set(job.cacheKey, img);
+                this.scheduleRender();
+            }).catch(() => {}).finally(() => {
+                this._thumbPending.delete(job.cacheKey);
+                this._thumbActive -= 1;
+                this._drainThumbPrefetch();
+            });
+        }
     }
 
     /** Capture a still from an r2v reference video for the timeline strip. */
