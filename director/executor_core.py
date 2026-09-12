@@ -18,9 +18,11 @@ from .refine_pack import (
     first_pass_sigmas_override,
     refine_needs_canvas,
     refine_passes_for,
+    refine_uses_continuous_latent,
     refine_will_sample,
 )
 from .refine_sampling import apply_segment_refine
+from .h3_latent_upscale import upscale_h3_av_latent_sequence
 from .frame_align import minimax_align_frame_count, pad_or_trim_frames
 from .audio_export import (
     AUDIO_MODE_GENERATE,
@@ -64,6 +66,7 @@ from .h3_motion_context import (
     trim_export_tail,
 )
 from .segment_cache import (
+    _av_latent_to_cpu,
     load_first_pass_av_latent,
     load_first_pass_cache,
     load_first_pass_frames_stale,
@@ -453,6 +456,40 @@ def execute_director_plan_core(
     segment_audios: list[dict[str, Any]] = []
     skipped_no_cache: list[int] = []
     reports: list[str] = [plan_summary(plan), "", "Execution path: ComfyUI official MiniMax H3"]
+    continuous_latent_requested = refine_uses_continuous_latent(getattr(plan, "refine", None))
+    continuous_latent_enabled = bool(continuous_latent_requested)
+    if continuous_latent_enabled:
+        if len(all_segments) < 2:
+            continuous_latent_enabled = False
+            reports.append(
+                "Refine scope: continuous_timeline requested but only one segment exists; "
+                "using per-segment H3 latent upscale."
+            )
+        elif plan.export_mode != "all":
+            continuous_latent_enabled = False
+            reports.append(
+                "Refine scope: continuous_timeline requires export mode=all; "
+                "using per-segment H3 latent upscale for segment export."
+            )
+        elif plan.run_indices is not None and set(plan.run_indices) != {
+            int(seg.index) for seg in all_segments
+        }:
+            continuous_latent_enabled = False
+            reports.append(
+                "Refine scope: continuous_timeline requires all timeline segments selected; "
+                "using per-segment H3 latent upscale for this partial run."
+            )
+        elif any(not refine_will_sample(plan, seg) for seg in all_segments):
+            continuous_latent_enabled = False
+            reports.append(
+                "Refine scope: continuous_timeline needs every segment to enter Refine; "
+                "using per-segment H3 latent upscale. Check skip_fl2v if needed."
+            )
+        else:
+            reports.append(
+                "Refine scope: continuous_timeline — all first-pass video latents will "
+                "share one temporal H3 upscale pass; audio remains per segment."
+            )
     if first_pass_sigmas is not None:
         sigma_steps = max(0, len(first_pass_sigmas) - 1)
         reports.append(
@@ -549,6 +586,9 @@ def execute_director_plan_core(
     completed_first_pass_av: dict[int, dict] = {}
     completed_av_handoff: dict[int, dict] = {}
     completed_audios: dict[int, dict] = {}
+    # Kept separately from the rolling continuity set so a timeline-wide
+    # upscale still has every first-pass latent after segment N finishes.
+    deferred_latent_upscale: dict[int, dict] = {}
     # Segments actually executed by _run_one_segment in THIS run.
     # completed_* also get export-fill hydrations from disk; this set does not.
     resampled_this_run: set[int] = set()
@@ -570,6 +610,7 @@ def execute_director_plan_core(
 
         ui_idx = seg.timeline_index
         will_refine = refine_will_sample(plan, seg)
+        defer_latent_upscale = continuous_latent_enabled and will_refine
         confirm_first = confirm_first_pass_enabled(plan)
         pre_cache = (
             load_first_pass_cache(node_id, seg, plan)
@@ -1134,7 +1175,12 @@ def execute_director_plan_core(
         completed_first_pass_av[seg.index] = first_pass_samples
         first_pass_gpu = None
         pre_export = None
-        run_refine = will_refine and not hold_after_first
+        run_refine = will_refine and not hold_after_first and not defer_latent_upscale
+        if defer_latent_upscale and not hold_after_first:
+            # The rolling continuity set may keep the previous segment live,
+            # but the whole timeline must not pin every generated latent on
+            # the GPU while later segments are sampled.
+            deferred_latent_upscale[seg.index] = _av_latent_to_cpu(first_pass_samples)
         if will_refine:
             cached_frames = pre_cache.get("frames") if skip_first_sample else None
             if isinstance(cached_frames, torch.Tensor) and cached_frames.numel() > 0:
@@ -1266,6 +1312,8 @@ def execute_director_plan_core(
                 f"先确认一采（已缓存 seed={int(getattr(plan, 'sample_seed', seed) or seed)}，未二采；"
                 "用同一 seed 再 Queue 将只跑二采）"
             )
+        elif defer_latent_upscale:
+            refine_note = "continuous_timeline latent upscale deferred"
         else:
             refine_note = ""
         samples = first_pass_samples if not run_refine else samples
@@ -1540,6 +1588,65 @@ def execute_director_plan_core(
             output_segments.append(seg)
             continue
 
+        # A portable .mmxlatent.zip deliberately removes decoded pixel caches.
+        # Hydrate an AV latent here so run-select can still merge an imported
+        # segment without re-sampling it.  Exact metadata is preferred; a
+        # same-source stale latent follows the same fill policy as stale frames.
+        latent_used_stale = False
+        cached_av = load_segment_av_latent(node_id, seg, plan)
+        if cached_av is None:
+            cached_av = load_segment_av_latent(node_id, seg, plan, allow_stale=True)
+            latent_used_stale = cached_av is not None
+        if cached_av is not None:
+            try:
+                cached_handoff = load_segment_handoff_meta(
+                    node_id, seg, plan, allow_stale=latent_used_stale
+                ) or {}
+                cached_trim = max(0, int(cached_handoff.get("trim_frames") or 0))
+                try:
+                    cached_len = int(cached_handoff.get("export_frames") or 0)
+                except (TypeError, ValueError):
+                    cached_len = 0
+                hydrated, hydrated_audio = _decode_av_latent(
+                    cached_av,
+                    vae,
+                    audio_vae,
+                    decode_audio=decode_audio,
+                )
+                if cached_len <= 0:
+                    cached_len = max(1, int(hydrated.shape[0]))
+                hydrated, hydrated_audio = _trim_decoded_to_export(
+                    hydrated,
+                    hydrated_audio,
+                    trim_frames=cached_trim,
+                    export_len=cached_len,
+                    plan=plan,
+                )
+                hydrated = hydrated.cpu().float()
+                completed_outputs[seg.index] = hydrated
+                completed_pre_refine[seg.index] = hydrated
+                completed_av_latents[seg.index] = cached_av
+                completed_av_handoff[seg.index] = cached_handoff
+                if isinstance(hydrated_audio, dict) and hydrated_audio.get("waveform") is not None:
+                    completed_audios[seg.index] = hydrated_audio
+                segment_export_lengths[seg.index] = int(hydrated.shape[0])
+                stale_note = ", stale fingerprint" if latent_used_stale else ""
+                audio_note = ", +audio" if seg.index in completed_audios else ", no audio"
+                reports.append(
+                    f"Segment {seg.index + 1}/{len(all_segments)}: hydrated from latent cache "
+                    f"({hydrated.shape[0]} frames{audio_note}{stale_note})"
+                )
+                output_chunks.append(hydrated)
+                output_pre_chunks.append(hydrated)
+                output_segments.append(seg)
+                continue
+            except Exception as exc:
+                log.warning(
+                    "Segment %s latent-cache hydration failed (%s); trying source fill.",
+                    seg.index + 1,
+                    exc,
+                )
+
         # Not selected + no cache: v2v/rv2v may fill from source video; gen batch must not
         # splice gray placeholders. If neither works, skip the slot (do not fail the run).
         fill = segment_passthrough_chunk(plan, seg)
@@ -1560,6 +1667,122 @@ def execute_director_plan_core(
         output_chunks.append(fill)
         output_pre_chunks.append(fill)
         output_segments.append(seg)
+
+    if continuous_latent_enabled and deferred_latent_upscale:
+        # All first-pass segments are ready now, so the 3D model can see real
+        # temporal context across their boundaries. The rolling continuity
+        # dictionaries are intentionally pruned during sampling; this private
+        # dictionary holds CPU copies until this post-pass.
+        refine_pack = getattr(plan, "refine", None) or {}
+        ordered_segments = [seg for seg in all_segments if seg.index in deferred_latent_upscale]
+        ordered_latents = [deferred_latent_upscale[seg.index] for seg in ordered_segments]
+        try:
+            from .refine_sampling import _resolve_refine_canvas
+
+            target_width, target_height = _resolve_refine_canvas(plan, refine_pack)
+            model_name = str(refine_pack.get("latent_upscale_model") or "")
+            latent_model = refine_pack.get("latent_upscale_module")
+            reports.append(
+                f"Continuous latent upscale: {len(ordered_latents)} segment(s) → "
+                f"{target_width}×{target_height}; one temporal H3 pass."
+            )
+            report_director_progress(
+                node_id,
+                segment_index=0,
+                segment_total=max(1, seg_total),
+                phase="upscale",
+                phase_value=0,
+                phase_max=1,
+                task_key="continuous_latent_upscale",
+            )
+            upscaled_latents = upscale_h3_av_latent_sequence(
+                ordered_latents,
+                target_width=target_width,
+                target_height=target_height,
+                source_width=int(plan.width),
+                source_height=int(plan.height),
+                model_name=model_name,
+                model=latent_model,
+                # Long timelines force temporal chunking inside the 3D net;
+                # the helper still uses one model staging.
+                enable_latent_chunking=bool(refine_pack.get("enable_latent_chunking", False)),
+            )
+            for seg, upscaled in zip(ordered_segments, upscaled_latents):
+                handoff = dict(completed_av_handoff.get(seg.index) or {})
+                trim_frames = max(0, int(handoff.get("trim_frames") or 0))
+                export_len = max(1, int(handoff.get("export_frames") or 0))
+                decoded, audio_dict = _decode_av_latent(
+                    upscaled,
+                    vae,
+                    audio_vae,
+                    decode_audio=decode_audio,
+                )
+                if not handoff.get("export_frames"):
+                    export_len = max(1, int(decoded.shape[0]))
+                decoded, audio_dict = _trim_decoded_to_export(
+                    decoded,
+                    audio_dict,
+                    trim_frames=trim_frames,
+                    export_len=export_len,
+                    plan=plan,
+                )
+                chunk = decoded.cpu().float()
+                completed_av_latents[seg.index] = upscaled
+                completed_outputs[seg.index] = chunk
+                completed_av_handoff[seg.index] = handoff
+                if isinstance(audio_dict, dict) and audio_dict.get("waveform") is not None:
+                    completed_audios[seg.index] = audio_dict
+                segment_export_lengths[seg.index] = int(chunk.shape[0])
+                run_pos = progress_pos.get(seg.index)
+                if run_pos is not None:
+                    if run_pos < len(segment_outputs):
+                        segment_outputs[run_pos] = chunk
+                    if run_pos < len(segment_audios):
+                        segment_audios[run_pos] = audio_dict or {}
+                for oi, output_seg in enumerate(output_segments):
+                    if getattr(output_seg, "index", -1) == seg.index:
+                        if oi < len(output_chunks):
+                            output_chunks[oi] = chunk
+                        break
+                save_segment_cache(
+                    node_id,
+                    seg,
+                    plan,
+                    chunk,
+                    av_latent=upscaled,
+                    handoff=handoff,
+                    audio=audio_dict if isinstance(audio_dict, dict) else None,
+                )
+                if mp4_run_dir is not None:
+                    maybe_export_segment_mp4s(
+                        mp4_run_dir,
+                        plan,
+                        seg,
+                        chunk,
+                        audio_dict if isinstance(audio_dict, dict) else None,
+                        pre_frames=completed_pre_refine.get(seg.index),
+                    )
+            report_director_progress(
+                node_id,
+                segment_index=max(0, seg_total - 1),
+                segment_total=max(1, seg_total),
+                phase="upscale",
+                phase_value=1,
+                phase_max=1,
+                task_key="continuous_latent_upscale",
+            )
+            reports.append(
+                "Continuous latent upscale complete: audio streams stayed at their "
+                "original per-segment timing; images_pre_refine remains first pass."
+            )
+        except Exception as exc:
+            # First-pass outputs and caches are already safe. Keep them visible
+            # and let the user switch to per_segment on a retry.
+            log.warning("Continuous H3 latent upscale failed: %s", exc)
+            reports.append(
+                f"Continuous latent upscale FAILED ({type(exc).__name__}: {exc}); "
+                "kept first-pass output. Switch Refine upscale_scope to per_segment and re-queue."
+            )
 
     if passthrough_indices:
         reports.append(

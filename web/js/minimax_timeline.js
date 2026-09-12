@@ -2774,6 +2774,8 @@ class MiniMaxH3DirectorEditor {
                     </div>
                     <button type="button" class="bd-btn" data-a="pack-import" data-i18n="toolbar.importPack" data-i18n-title="tooltip.importPack">导入导演包</button>
                     <button type="button" class="bd-btn" data-a="pack-export" data-i18n="toolbar.exportPack" data-i18n-title="tooltip.exportPack">导出导演包</button>
+                    <button type="button" class="bd-btn" data-a="latent-import" data-i18n="toolbar.importLatents" data-i18n-title="tooltip.importLatents">导入 Latent</button>
+                    <button type="button" class="bd-btn" data-a="latent-export" data-i18n="toolbar.exportLatents" data-i18n-title="tooltip.exportLatents">导出 Latent</button>
                     <button type="button" class="bd-btn" data-a="lang-toggle" data-i18n="toolbar.langToggle" data-i18n-title="toolbar.langToggleTitle">EN</button>
                     <div class="bd-bounds" data-r="bounds">起点: 0.00 | 终点: -</div>
                     <div class="bd-timecode" data-r="timecode">0.00s</div>
@@ -12916,4 +12918,3 @@ app.registerExtension({
         };
     },
 });
-

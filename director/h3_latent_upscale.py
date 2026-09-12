@@ -389,8 +389,11 @@ def _upscaler_accepts_chunking(model) -> bool:
     """True for in-repo LatentResizer3D; wired third-party nets usually do not."""
     if hasattr(model, "_forward_seg"):
         return True
+    forward = getattr(model, "forward", None)
+    if forward is None:
+        return False
     try:
-        params = inspect.signature(model.forward).parameters
+        params = inspect.signature(forward).parameters
     except (TypeError, ValueError):
         return False
     if "enable_chunking" in params:
@@ -512,3 +515,175 @@ def upscale_h3_video_latent(
         scale,
     )
     return packed
+
+
+def upscale_h3_video_latent_sequence(
+    video_latents: list[dict],
+    *,
+    target_width: int,
+    target_height: int,
+    source_width: int,
+    source_height: int,
+    model_name: str = "",
+    model=None,
+    enable_latent_chunking: bool = False,
+) -> list[dict]:
+    """Upscale several consecutive video latents in one temporal sequence.
+
+    Director segments are generated independently, so their latent tensors
+    normally restart at temporal step zero.  Concatenating them for the 3D
+    upscaler gives the temporal convolutions real context at each segment
+    boundary.  The result is split back into the original segment lengths;
+    callers keep each segment's audio stream and export handoff unchanged.
+    """
+    if not isinstance(video_latents, list) or not video_latents:
+        raise ValueError("H3 latent sequence upscale needs at least one video latent.")
+
+    works: list[torch.Tensor] = []
+    squeezed: list[bool] = []
+    originals: list[dict] = []
+    for item in video_latents:
+        if not isinstance(item, dict):
+            raise ValueError("H3 latent sequence entries must be latent dictionaries.")
+        samples = item.get("samples")
+        if not torch.is_tensor(samples):
+            raise ValueError("H3 latent sequence needs video latent tensors.")
+        work, shape_kind = _as_bcthw(samples)
+        works.append(work)
+        squeezed.append(shape_kind == "batch")
+        originals.append(item)
+
+    first = works[0]
+    base_shape = tuple(int(x) for x in first.shape[:2]) + tuple(int(x) for x in first.shape[-2:])
+    if any(
+        tuple(int(x) for x in work.shape[:2]) + tuple(int(x) for x in work.shape[-2:]) != base_shape
+        for work in works[1:]
+    ):
+        raise ValueError(
+            "H3 continuous latent upscale requires matching batch/channel/source canvas "
+            "for every segment."
+        )
+    lengths = [int(work.shape[2]) for work in works]
+    total_t = sum(lengths)
+    lat_h, lat_w = int(first.shape[-2]), int(first.shape[-1])
+    src_h = max(1, int(source_height or 0))
+    src_w = max(1, int(source_width or 0))
+    ratio_h = src_h / float(lat_h)
+    ratio_w = src_w / float(lat_w)
+    dst_h = max(1, int(round(int(target_height) / ratio_h)))
+    dst_w = max(1, int(round(int(target_width) / ratio_w)))
+    if dst_h == lat_h and dst_w == lat_w:
+        return [dict(item) for item in originals]
+
+    scale = max(
+        float(int(target_width)) / float(src_w),
+        float(int(target_height)) / float(src_h),
+    )
+    if scale < 0.999:
+        raise ValueError(
+            f"H3 latent upscale is enlarge-only (got {src_w}×{src_h} → "
+            f"{int(target_width)}×{int(target_height)})."
+        )
+    if model is None and (not model_name or str(model_name).startswith("(")):
+        raise ValueError(
+            "未选择 H3 latent 放大模型。请在 Refine 的 latent_upscale_model 下拉框里选 3D 权重，"
+            f"并把 safetensors 放到 ComfyUI/models/{LATENT_UPSCALE_FOLDER}/"
+        )
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dtype = torch.float32
+    if model is not None:
+        net = model.model if hasattr(model, "model") and not hasattr(model, "conv_in") else model
+        model = net.to(device=device, dtype=dtype).eval()
+    else:
+        model = load_h3_latent_upscaler(model_name, device, dtype)
+    orig_dtype = first.dtype
+    mean, std = _norm_tensors(device, dtype)
+    x = torch.cat(works, dim=2).to(device=device, dtype=dtype)
+    x = (x - mean) / std
+    try:
+        # A timeline longer than one upscaler window should never silently
+        # allocate the full temporal activation graph just because the
+        # per-segment checkbox was left off.
+        effective_chunking = bool(enable_latent_chunking) or total_t > 24
+        log.info(
+            "H3 continuous latent upscale: %d segment(s), T=%d, chunking=%s",
+            len(works),
+            total_t,
+            effective_chunking,
+        )
+        with torch.no_grad():
+            out = _forward_upscaler(
+                model,
+                x,
+                scale=scale,
+                target_size=(total_t, dst_h, dst_w),
+                enable_chunking=effective_chunking,
+            )
+        out = out * std
+        out = out + mean
+        if out.ndim != 5 or int(out.shape[2]) != total_t:
+            raise ValueError(
+                "H3 latent upscaler returned an unexpected sequence shape: "
+                f"{tuple(out.shape)}"
+            )
+        out = out.to(device="cpu", dtype=orig_dtype).contiguous()
+    finally:
+        model.to("cpu")
+        del x
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    chunks = list(out.split(lengths, dim=2))
+    result: list[dict] = []
+    for item, chunk, was_squeezed in zip(originals, chunks, squeezed):
+        if was_squeezed:
+            chunk = chunk.squeeze(0)
+        packed = dict(item)
+        packed["samples"] = chunk
+        packed.pop("noise_mask", None)
+        result.append(packed)
+    return result
+
+
+def upscale_h3_av_latent_sequence(
+    av_latents: list[dict],
+    *,
+    target_width: int,
+    target_height: int,
+    source_width: int,
+    source_height: int,
+    model_name: str = "",
+    model=None,
+    enable_latent_chunking: bool = False,
+) -> list[dict]:
+    """Timeline-wide H3 video upscale while preserving each segment's audio."""
+    from .h3_motion_context import _repack_av_streams, _streams_from_latent
+
+    videos: list[dict] = []
+    streams_by_segment: list[list[torch.Tensor]] = []
+    for latent in av_latents:
+        streams = list(_streams_from_latent(latent))
+        if not streams or not torch.is_tensor(streams[0]):
+            raise ValueError("H3 continuous latent upscale needs AV video streams.")
+        streams_by_segment.append(streams)
+        videos.append({"samples": streams[0]})
+    upscaled_videos = upscale_h3_video_latent_sequence(
+        videos,
+        target_width=target_width,
+        target_height=target_height,
+        source_width=source_width,
+        source_height=source_height,
+        model_name=model_name,
+        model=model,
+        enable_latent_chunking=enable_latent_chunking,
+    )
+    result: list[dict] = []
+    for source, streams, video in zip(av_latents, streams_by_segment, upscaled_videos):
+        new_streams = list(streams)
+        new_streams[0] = video["samples"]
+        packed = dict(source)
+        packed["samples"] = _repack_av_streams(new_streams, source)
+        packed.pop("noise_mask", None)
+        result.append(packed)
+    return result

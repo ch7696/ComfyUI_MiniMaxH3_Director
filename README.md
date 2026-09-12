@@ -17,6 +17,7 @@
 - 根据 VRAM 状态自动选择分段模型清理策略；
 - 单次执行内缓存源视频身份信息，减少重复文件状态查询；
 - 限制时间线缩略图预取队列，避免大量并发请求造成界面卡顿。
+- 将内部分段 AV latent 缓存做成可移植的 `*.mmxlatent.zip`，支持批量断点恢复。
 
 后续功能将在该 fork 的 `main` 分支继续开发。
 
@@ -37,9 +38,10 @@
 | **外部多组接线** | `Director Group (Image to Video)` / `(Reference to Video)` + `Groups Combine`；连入导演台 `i2v_groups` / `r2v_groups` 后外部优先覆盖 UI 素材，仍支持跑批与选择运行 |
 | **原生立体声音频** | 与画面同次采样生成；`v2v`/`rv2v` 可选生成声音 / 使用原声 / 静音 |
 | **段间引导** | 默认关闭；多段 `t2v` / `i2v` / `fl2v` / `r2v` / `v2v` / `rv2v` 时可开启，将上一段生成结果的末尾运动（及生成音频）钉入下一段采样再裁掉前缀。上下文帧数：5 / 22 / 39 / 56，**默认推荐为 22**。**感谢 [ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context) 提供的实现思路** |
-| **二采 / 放大 (Refine)** | 外接 **MiniMax H3 Director Refine** 到导演台 `refine` 口。未接线 = 原来的单次采样。`refine` = 同分辨率精修；`upscale` = 先放大到目标画布再按 SIGMAS 二采（像素插值 / RTX VSR / H3 latent）；`latent_upscale` = 只放大 H3 latent、不二采。`passes` 可多次精修（upscale 只放大一次）。可选接 `refine_model` 换二采 UNET。`images` 为二采后成片，`images_pre_refine` 为一采（放大前）画面 |
+| **二采 / 放大 (Refine)** | 外接 **MiniMax H3 Director Refine** 到导演台 `refine` 口。未接线 = 原来的单次采样。`refine` = 同分辨率精修；`upscale` = 先放大到目标画布再按 SIGMAS 二采（像素插值 / RTX VSR / H3 latent）；`latent_upscale` = 只放大 H3 latent、不二采。H3 latent 可选 `per_segment` 或 `continuous_timeline`（所有片段的一采 latent 串成一次 3D 超分，段间时间卷积更连续）。`passes` 可多次精修（upscale 只放大一次）。可选接 `refine_model` 换二采 UNET。`images` 为二采后成片，`images_pre_refine` 为一采（放大前）画面 |
 | **运行报告** | `report` 口输出分段计划、每段任务摘要 |
 | **导演包导入导出** | 工具栏「导入/导出导演包」：zip 内保存时间轴 JSON 与参考图/视频/音频。目录名为英文（`shared_params/`、`asset_groups/01/`、`Picture1`…），与切到 EN 后的界面用语对应，避免路径编码问题 |
+| **Latent 断点包** | 工具栏「导出/导入 Latent」：把当前节点的分段 AV latent（终稿 / 一采、元数据、连续性 handoff）保存为 `*.mmxlatent.zip`，可在同一时间轴上恢复批量任务 |
 
 参考音频槽可直接选择已有视频，或从本地选择音频/视频；视频会立即提取首条音轨为 FLAC，结果直接保存到 `input/`。本地视频只在临时目录中用于提取，不会作为视频素材保存。音频沿用 ComfyUI 现有上传规则：同名同内容直接复用，同名不同内容自动添加序号且不会覆盖；当前素材组也不会重复添加同一路径。
 
@@ -82,6 +84,16 @@ timeline.json
 - 转换工具可以只写 `pack.json` + `shared_params/` + `asset_groups/`，不必手写 `timeline.json`。
 - 槽位编号与界面相同：公共参数占用 Picture 1–3 时，组文件夹里从 `Picture4` 续编，不要在组内把第一张改名为 `Picture1`。
 - 不含 UNET / CLIP / VAE。导入会覆盖当前节点时间轴（有确认）。媒体落到 ComfyUI `input/minimax_director_packs/`。
+
+## Latent 断点包（批量恢复）
+
+工具栏右侧 **导出 Latent / 导入 Latent** 针对当前 Director 节点的分段缓存，导出为 `*.mmxlatent.zip`。包内使用 safetensors 保存视频流、音频流和必要的附加张量；不会把模型权重打包，也不会直接导入 PyTorch pickle。
+
+- **适合场景：** 分段批量生成中断、换机器继续、先确认一采再二采，以及保留段间连续性的 AV handoff。
+- 导入会覆盖当前节点中同编号的 latent，并删除对应旧解码帧，避免旧像素与新 latent 错配。
+- 导入后请保持**时间轴、片段顺序、seed、提示词和一采参数**一致，再 Queue；一采缓存要求精确匹配，界面上的「一采缓存状态」可检查命中情况。
+- Latent 包只保存缓存，不包含 UNET、CLIP、VAE 或参考素材；跨机器使用时仍需准备相同模型和导演包素材。
+- 需要在 ComfyUI 的虚拟环境中安装 `safetensors`（通常 ComfyUI 已自带）：`pip install safetensors`。
 
 ## 依赖
 
@@ -192,7 +204,8 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 6. 二采用 SIGMAS：把 `BasicScheduler` 或 `ManualSigmas` 接到 Refine 的 `sigmas` 口
 7. fl2v 默认跳过二采（保护钉死的首尾帧）；关掉 Refine 上的 `skip_fl2v` 才会采
 8. `upscale` 默认 `h3_latent`：在 Refine 节点里选 3D 权重（`upscale_method` 下方下拉框；`mode=latent_upscale` 时同样出现）。权重放 `ComfyUI/models/latent_upscale_models/`。`lanczos` 可另接 `upscale_model`（RealESRGAN 等），不接则纯插值；也可改 `nvidia_rtx_vsr`
-9. 「分段导出」且 `passes>1` 时，每轮会另落 `seg_XXXX_pN.mp4`；「全部导出」只出一采和终稿
+9. `mode=latent_upscale` 时把 `upscale_scope` 设为 `continuous_timeline`，会先完成全部一采，再把所有片段的**视频 latent**按时间串起来做一次 H3 3D 超分，之后按原片段切回；音频流不拼接，仍按片段保存。该模式要求「全部导出」、所有片段都参与本轮，部分选择运行或分段导出会自动回退到 `per_segment`
+10. 「分段导出」且 `passes>1` 时，每轮会另落 `seg_XXXX_pN.mp4`；「全部导出」只出一采和终稿
 
 示例：`example_workflows/minimax_h3_director_二采_加速.json`
 

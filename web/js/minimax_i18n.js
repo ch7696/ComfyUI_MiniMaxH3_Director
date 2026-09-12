@@ -25,8 +25,12 @@ const ZH = {
     "toolbar.noVideo": "未上传视频",
     "toolbar.exportPack": "导出导演包",
     "toolbar.importPack": "导入导演包",
+    "toolbar.exportLatents": "导出 Latent",
+    "toolbar.importLatents": "导入 Latent",
     "tooltip.exportPack": "导出当前时间轴与参考素材为 zip（英文目录名，可换机器再导入）",
     "tooltip.importPack": "导入导演包，覆盖当前时间轴与素材槽",
+    "tooltip.exportLatents": "导出当前 Director 的分段 AV latent 缓存（可断点恢复/换机导入）",
+    "tooltip.importLatents": "导入分段 AV latent 到当前 Director 节点；需保持时间轴与一采参数一致",
 
     "tooltip.addRefGroup": "添加一组参考素材（图片 / 音频 / 视频）",
     "tooltip.addShot": "添加一组（可只写提示词文生，或上传首帧/尾帧；支持只传尾帧）",
@@ -463,6 +467,13 @@ const ZH = {
     "pack.importDoneMissing": "已导入，但以下素材缺失：",
     "pack.alertFailed": "导演包操作失败：{err}",
     "pack.failedTitle": "导演包操作失败",
+    "latent.noNode": "未找到当前 Director 节点",
+    "latent.exportFailed": "导出 Latent 包失败",
+    "latent.importFailed": "导入 Latent 包失败",
+    "latent.importConfirm": "导入会覆盖当前节点中同编号的 Latent 缓存，并删除对应的旧解码帧。确定继续吗？",
+    "latent.exportDone": "Latent 包已导出：终稿 {final} 段，一采 {first} 段。",
+    "latent.importDone": "Latent 已导入：终稿 {final} 段，一采 {first} 段（片段 {segments}）。\n请保持时间轴、seed 和一采参数一致，再 Queue 以命中断点缓存。",
+    "latent.warnings": "部分缓存未导出：",
 };
 
 const EN = {
@@ -488,8 +499,12 @@ const EN = {
     "toolbar.noVideo": "No video uploaded",
     "toolbar.exportPack": "Export pack",
     "toolbar.importPack": "Import pack",
+    "toolbar.exportLatents": "Export Latent",
+    "toolbar.importLatents": "Import Latent",
     "tooltip.exportPack": "Export the current timeline and reference media as a zip (ASCII folders; portable)",
     "tooltip.importPack": "Import a director pack, replacing the current timeline and media slots",
+    "tooltip.exportLatents": "Export this Director's per-segment AV latent cache for resume or migration",
+    "tooltip.importLatents": "Import per-segment AV latents; keep the timeline and first-pass parameters unchanged",
 
     "tooltip.addRefGroup": "Add a reference group (images / audio / video)",
     "tooltip.addShot": "Add a shot (prompt-only text-to-video, or start and/or end; end-only OK)",
@@ -926,6 +941,13 @@ const EN = {
     "pack.importDoneMissing": "Imported, but these media files were missing:",
     "pack.alertFailed": "Director pack failed: {err}",
     "pack.failedTitle": "Director pack failed",
+    "latent.noNode": "The current Director node was not found",
+    "latent.exportFailed": "Failed to export the latent pack",
+    "latent.importFailed": "Failed to import the latent pack",
+    "latent.importConfirm": "This overwrites same-index latent caches on the current node and removes their old decoded frames. Continue?",
+    "latent.exportDone": "Latent pack exported: {final} final, {first} first-pass artifact(s).",
+    "latent.importDone": "Latents imported: {final} final, {first} first-pass artifact(s) (segments {segments}).\nKeep the timeline, seed, and first-pass parameters unchanged, then Queue to resume.",
+    "latent.warnings": "Some cache artifacts were skipped:",
 };
 
 const DICTS = { zh: ZH, en: EN };

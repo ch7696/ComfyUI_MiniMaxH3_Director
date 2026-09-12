@@ -470,6 +470,7 @@ const SAFE_UPLOAD_EXTS = new Set([
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff",
     ".mp4", ".webm", ".mov", ".mkv", ".avi",
     ".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac",
+    ".zip",
 ]);
 const WIN_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 

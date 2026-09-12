@@ -16,6 +16,7 @@ MMX_DIR_REFINE = "MMX_DIR_REFINE"
 REFINE_MODES = ("refine", "upscale", "latent_upscale")
 SEED_MODES = ("inherit", "offset")
 UPSCALE_METHODS = ("lanczos", "nvidia_rtx_vsr", "h3_latent")
+UPSCALE_SCOPES = ("per_segment", "continuous_timeline")
 MAX_REFINE_PASSES = 9999
 # 海螺参考生视频二采：ManualSigmas 4 个数 = euler 3 步。
 HAILUO_REFINE_SIGMAS = (0.85, 0.7250, 0.4219, 0.0)
@@ -133,6 +134,17 @@ def refine_uses_h3_latent(pack: dict[str, Any] | None) -> bool:
         return True
     method = str(pack.get("upscale_method") or "").strip().lower()
     return mode == "upscale" and method == "h3_latent"
+
+
+def refine_uses_continuous_latent(pack: dict[str, Any] | None) -> bool:
+    """True only for timeline-wide H3 latent-only upscale."""
+    pack = pack or {}
+    return (
+        str(pack.get("mode") or "").strip().lower() == "latent_upscale"
+        and refine_uses_h3_latent(pack)
+        and str(pack.get("upscale_scope") or "per_segment").strip().lower()
+        == "continuous_timeline"
+    )
 
 
 def latent_upscale_model_name(pack: dict[str, Any] | None) -> str:
@@ -302,6 +314,7 @@ def pack_refine(
     enable_tiling: bool = False,
     tile_count: int = 2,
     tile_overlap: int = 128,
+    upscale_scope: str = "per_segment",
 ) -> dict[str, Any]:
     mode = str(mode or "refine").strip().lower()
     if mode not in REFINE_MODES:
@@ -312,6 +325,9 @@ def pack_refine(
     method = str(upscale_method or "h3_latent").strip().lower()
     if method not in UPSCALE_METHODS:
         method = "h3_latent"
+    scope = str(upscale_scope or "per_segment").strip().lower()
+    if scope not in UPSCALE_SCOPES:
+        scope = "per_segment"
     sampler = str(sampler or DEFAULT_REFINE_SIGMA_SAMPLER).strip() or DEFAULT_REFINE_SIGMA_SAMPLER
     sigma_tensor = sigmas if is_refine_sigmas_tensor(sigmas) else None
     parsed = (
@@ -338,6 +354,7 @@ def pack_refine(
         "target_height": th,
         "skip_fl2v": bool(skip_fl2v),
         "upscale_method": method,
+        "upscale_scope": scope,
         "upscale_model": upscale_model,
         "has_upscale_model": upscale_model is not None,
         "sample_model": sample_model,
@@ -393,6 +410,9 @@ def normalize_refine_pack(
     method = str(raw.get("upscale_method") or "h3_latent").strip().lower()
     if method not in UPSCALE_METHODS:
         method = "h3_latent"
+    scope = str(raw.get("upscale_scope") or "per_segment").strip().lower()
+    if scope not in UPSCALE_SCOPES:
+        scope = "per_segment"
     sampler = str(raw.get("sampler") or DEFAULT_REFINE_SIGMA_SAMPLER).strip() or DEFAULT_REFINE_SIGMA_SAMPLER
     sigma_tensor = raw.get("sigmas_tensor")
     raw_sigmas = raw.get("sigmas")
@@ -426,6 +446,7 @@ def normalize_refine_pack(
         "target_height": th,
         "skip_fl2v": bool(raw.get("skip_fl2v", True)),
         "upscale_method": method,
+        "upscale_scope": scope,
         "upscale_model": upscale,
         "has_upscale_model": upscale is not None,
         "sample_model": sample_model,
@@ -511,6 +532,8 @@ def refine_fingerprint(plan) -> dict[str, Any]:
     }
     if refine_uses_h3_latent(pack) and bool(pack.get("enable_latent_chunking")):
         payload["refine_enable_latent_chunking"] = True
+    if refine_uses_continuous_latent(pack):
+        payload["refine_upscale_scope"] = "continuous_timeline"
     if str(pack.get("mode") or "") != "latent_upscale" and bool(pack.get("enable_tiling")):
         payload["refine_enable_tiling"] = True
         payload["refine_tile_count"] = _clamp_tile_count(pack.get("tile_count"))
@@ -542,6 +565,8 @@ def refine_report_line(plan) -> str | None:
         )
         if refine_uses_h3_latent(pack) and pack.get("enable_latent_chunking"):
             extra += ", temporal chunk"
+        if refine_uses_continuous_latent(pack):
+            extra += ", continuous timeline"
     n_passes = refine_passes_for(pack)
     pass_note = f", passes={n_passes}" if n_passes > 1 else ""
     model_note = (

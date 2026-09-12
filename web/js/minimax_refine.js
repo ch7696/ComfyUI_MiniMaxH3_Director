@@ -76,6 +76,7 @@ const ASPECT_CHOICES = new Set([
 ]);
 
 const UPSCALE_METHOD_VALUES = new Set(["lanczos", "nvidia_rtx_vsr", "h3_latent"]);
+const UPSCALE_SCOPE_VALUES = new Set(["per_segment", "continuous_timeline"]);
 const SEED_MODE_VALUES = new Set(["inherit", "offset"]);
 const SAMPLER_HINTS = new Set([
     "euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral",
@@ -95,6 +96,10 @@ function looksLikeSampler(value) {
     return SAMPLER_HINTS.has(String(value ?? "").trim().toLowerCase());
 }
 
+function looksLikeUpscaleScope(value) {
+    return UPSCALE_SCOPE_VALUES.has(String(value ?? "").trim().toLowerCase());
+}
+
 function clampPasses(value) {
     const n = Math.round(Number(value));
     if (!Number.isFinite(n) || n < 1) return 1;
@@ -105,6 +110,7 @@ function migrateRefineWidgetOrder(node) {
     const samplerW = widgetByName(node, "sampler");
     const passesW = widgetByName(node, "passes");
     const methodW = widgetByName(node, "upscale_method");
+    const scopeW = widgetByName(node, "upscale_scope");
     if (samplerW && !looksLikeSampler(widgetValue(samplerW))) {
         samplerW.value = "euler";
     }
@@ -113,6 +119,9 @@ function migrateRefineWidgetOrder(node) {
     }
     if (methodW && !looksLikeUpscaleMethod(widgetValue(methodW))) {
         methodW.value = "h3_latent";
+    }
+    if (scopeW && !looksLikeUpscaleScope(widgetValue(scopeW))) {
+        scopeW.value = "per_segment";
     }
 }
 
@@ -500,6 +509,7 @@ function syncRefineWidgetVisibility(node) {
     setWidgetVisible(node, "upscale_method", upscale);
     setWidgetVisible(node, "latent_upscale_model", showH3Model);
     setWidgetVisible(node, "enable_latent_chunking", showH3Model);
+    setWidgetVisible(node, "upscale_scope", latentOnly);
     setWidgetVisible(node, "h3_latent_model", false);
     setWidgetVisible(node, "upscale_model", false);
     setWidgetVisible(node, "schedule", false);
@@ -557,6 +567,7 @@ function installRefineResolutionUI(node) {
     };
     hookWidget(node, "mode", () => syncRefineWidgetVisibility(node));
     hookWidget(node, "upscale_method", () => syncRefineWidgetVisibility(node));
+    hookWidget(node, "upscale_scope", () => syncRefineWidgetVisibility(node));
     hookWidget(node, "enable_tiling", () => syncRefineWidgetVisibility(node));
     hookWidget(node, "aspect_ratio", onAspect);
     hookWidget(node, "megapixels", () => syncRefineComputedSize(node));
@@ -577,7 +588,7 @@ function installRefineResolutionUI(node) {
         const prev = node.onWidgetChanged;
         node.onWidgetChanged = function (name, ...rest) {
             const r = prev?.apply(this, [name, ...rest]);
-            if (name === "mode" || name === "upscale_method" || name === "aspect_ratio" || name === "megapixels" || name === "enable_tiling") {
+            if (name === "mode" || name === "upscale_method" || name === "upscale_scope" || name === "aspect_ratio" || name === "megapixels" || name === "enable_tiling") {
                 migrateRefineWidgets(this);
                 syncRefineWidgetVisibility(this);
             }

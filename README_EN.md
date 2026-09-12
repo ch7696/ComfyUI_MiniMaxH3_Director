@@ -18,6 +18,7 @@ This version was updated by GitHub user [ch7696](https://github.com/ch7696). It 
 - VRAM-aware model cleanup between segments;
 - per-execution memoization of source-video identity checks;
 - a bounded timeline thumbnail prefetch queue to avoid request bursts and UI jank.
+- a portable `*.mmxlatent.zip` archive for per-segment AV latent and batch resume.
 
 Future features will continue on this fork's `main` branch.
 
@@ -38,9 +39,10 @@ Future features will continue on this fork's `main` branch.
 | **External multi-group inputs** | `Director Group (Image to Video)` / `(Reference to Video)` + `Groups Combine`; wire into `i2v_groups` / `r2v_groups` for external-priority batches with run-select |
 | **Native stereo audio** | Generated with the picture; `v2v`/`rv2v` can generate / keep source / mute |
 | **Segment continuity** | Off by default. For multi-segment `t2v` / `i2v` / `fl2v` / `r2v` / `v2v` / `rv2v`, pin the previous generated tail (motion + generated audio) into the next sample, then trim the prefix. Context frames: 5 / 22 / 39 / 56 — **recommended default: 22**. **Thanks to [ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context) for the implementation approach** |
-| **Refine / upscale** | Wire **MiniMax H3 Director Refine** into Director `refine`. Unconnected = original single-pass sampling. `refine` = same-resolution second sample; `upscale` = enlarge to a target canvas then SIGMAS sample (pixel / RTX VSR / H3 latent); `latent_upscale` = H3 latent enlarge only, no second sample. `passes` repeats refine (upscale once). Optional `refine_model` swaps the second-pass UNET. `images` is the refined clip; `images_pre_refine` is the first pass (before upscale) |
+| **Refine / upscale** | Wire **MiniMax H3 Director Refine** into Director `refine`. Unconnected = original single-pass sampling. `refine` = same-resolution second sample; `upscale` = enlarge to a target canvas then SIGMAS sample (pixel / RTX VSR / H3 latent); `latent_upscale` = H3 latent enlarge only, no second sample. H3 latent offers `per_segment` or `continuous_timeline` (one 3D temporal upscale over all first-pass segments). `passes` repeats refine (upscale once). Optional `refine_model` swaps the second-pass UNET. `images` is the refined clip; `images_pre_refine` is the first pass (before upscale) |
 | **Run report** | `report` output with plan and per-segment summary |
 | **Director pack I/O** | Toolbar **Import pack / Export pack**: zip of timeline JSON plus reference images/videos/audio. ASCII folders (`shared_params/`, `asset_groups/01/`, `Picture1`…) match the English UI and avoid path-encoding issues |
+| **Latent checkpoint pack** | Toolbar **Import Latent / Export Latent**: portable `*.mmxlatent.zip` containing per-segment AV latents (final / first-pass), metadata, and continuity handoff |
 
 Reference-audio slots can select an existing video or a local audio/video file. A video's first audio stream is extracted immediately to FLAC directly under `input/`; local source videos remain temporary and are not saved as video assets. Audio follows ComfyUI's existing upload rule: identical content with the same name is reused, while different content with the same name gets a numeric suffix without overwriting; the same resolved audio path is not added twice within one material group.
 
@@ -83,6 +85,16 @@ timeline.json
 - A converter may write only `pack.json` + `shared_params/` + `asset_groups/` and omit `timeline.json`.
 - Slot numbers match the UI: if Shared params occupy Picture 1–3, group folders continue from `Picture4` — do not rename the group’s first image to `Picture1`.
 - Models (UNET / CLIP / VAE) are not included. Import replaces the current node timeline (with confirmation). Media is copied to ComfyUI `input/minimax_director_packs/`.
+
+## Latent checkpoint pack (batch resume)
+
+Toolbar **Export Latent / Import Latent** targets the current Director node's per-segment cache and writes `*.mmxlatent.zip`. Video, audio, and tensor extras use safetensors; model weights are never included, and imports do not execute PyTorch pickle payloads.
+
+- **Use it for:** interrupted batch renders, moving a job to another machine, confirm-first-pass → refine, and preserving segment-continuity handoffs.
+- Import overwrites same-index latent artifacts on the current node and removes their old decoded frames so stale pixels cannot be paired with the imported latent.
+- Keep the **timeline, segment order, seed, prompts, and first-pass sampling parameters** unchanged, then Queue. The first-pass cache is an exact-match cache; the Refine status panel shows whether it matches.
+- The archive contains cache data only, not UNET / CLIP / VAE weights or reference media. Prepare the same models and Director pack assets on the target machine.
+- Install `safetensors` in the ComfyUI virtual environment if it is missing (ComfyUI usually includes it): `pip install safetensors`.
 
 ## Requirements
 
@@ -193,7 +205,8 @@ This repo ships examples under `example_workflows/`:
 6. Second sample uses SIGMAS: wire `BasicScheduler` or `ManualSigmas` into Refine `sigmas`
 7. fl2v skips refine by default (protects pinned first/last frames); turn off `skip_fl2v` on Refine to include those shots
 8. Upscale default is `h3_latent`: pick the 3D weights in Refine (dropdown under `upscale_method`; also shown for `mode=latent_upscale`). Put the file in `ComfyUI/models/latent_upscale_models/`. `lanczos` can take optional `upscale_model` (RealESRGAN etc.); or use `nvidia_rtx_vsr`
-9. Segment export with `passes>1` also writes `seg_XXXX_pN.mp4` per round; export-all still only keeps first-pass and the final clip
+9. For `mode=latent_upscale`, set `upscale_scope=continuous_timeline` to finish all first passes, run one temporal H3 upscale over the concatenated **video latents**, then split back to the original segments. Audio stays per segment. This requires export-all and all segments selected; partial run or segment export automatically falls back to `per_segment`
+10. Segment export with `passes>1` also writes `seg_XXXX_pN.mp4` per round; export-all still only keeps first-pass and the final clip
 
 Example: `example_workflows/minimax_h3_director_二采_加速.json`
 

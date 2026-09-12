@@ -15,6 +15,7 @@ from ..director.refine_pack import (
     REFINE_MODES,
     SEED_MODES,
     UPSCALE_METHODS,
+    UPSCALE_SCOPES,
     infer_upscale_target,
     pack_refine,
 )
@@ -251,7 +252,19 @@ class MiniMaxH3DirectorRefine:
                         "step": 64,
                         "tooltip": (
                             "块间重叠，单位为输出像素（步长 64）。"
-                            "越大接缝越轻，单块也越大，省显存越少。"
+                        "越大接缝越轻，单块也越大，省显存越少。"
+                        ),
+                    },
+                ),
+                "upscale_scope": (
+                    list(UPSCALE_SCOPES),
+                    {
+                        "default": "per_segment",
+                        "tooltip": (
+                            "H3 latent 超分范围。per_segment：每段独立处理，显存最低；"
+                            "continuous_timeline：先把所有段的一采 latent 串成一条时间序列，"
+                            "只做一次 3D 超分，段间时间卷积更连续。"
+                            "目前仅 mode=latent_upscale 生效；upscale + 二采仍按分段执行。"
                         ),
                     },
                 ),
@@ -277,7 +290,8 @@ class MiniMaxH3DirectorRefine:
         "width / height are the resolved target canvas (×32). "
         "Does not sample by itself — no IMAGE output. "
         "confirm_first_pass: first Queue writes first-pass cache; "
-        "second Queue with the same seed runs refine only."
+        "second Queue with the same seed runs refine only. "
+        "continuous_timeline: one H3 latent upscale across the full selected timeline."
     )
 
     def pack(
@@ -297,6 +311,7 @@ class MiniMaxH3DirectorRefine:
         enable_tiling=False,
         tile_count=2,
         tile_overlap=128,
+        upscale_scope="per_segment",
         latent_upscale_model=None,
         upscale_model=None,
         h3_latent_model="",
@@ -348,6 +363,7 @@ class MiniMaxH3DirectorRefine:
             enable_tiling=bool(enable_tiling),
             tile_count=tile_count,
             tile_overlap=tile_overlap,
+            upscale_scope=upscale_scope,
             upscale_method=upscale_method,
             sample_model=refine_model if refine_model is not None else model,
             latent_upscale_model=latent_upscale_model if latent_upscale_model is not None else h3_latent_model,

@@ -72,11 +72,11 @@ function formatMissing(missing) {
     return shown + extra;
 }
 
-function pickZipFile() {
+function pickZipFile(accept = ".zip,application/zip") {
     return new Promise((resolve) => {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = ".zip,application/zip";
+        input.accept = accept;
         input.style.display = "none";
         input.addEventListener("change", () => {
             const file = input.files?.[0] || null;
@@ -193,6 +193,100 @@ export async function importDirectorPack(editor) {
     }
 }
 
+export async function exportDirectorLatents(editor) {
+    const nodeId = editor?.node?.id;
+    if (nodeId == null) throw new Error(t("latent.noNode"));
+    const resp = await api.fetchApi("/minimax/director/export_latents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node_id: String(nodeId) }),
+    });
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || t("latent.exportFailed"));
+    }
+    const ctype = (resp.headers.get("Content-Type") || "").toLowerCase();
+    let blob;
+    let downloadName = resp.headers.get("X-Latent-Download-Name") || "MiniMaxH3Director-Latent.mmxlatent.zip";
+    let counts = {};
+    let warnings = [];
+    if (ctype.includes("application/json")) {
+        const result = await resp.json();
+        downloadName = result.downloadName || downloadName;
+        counts = result.counts || {};
+        warnings = result.warnings || [];
+        const raw = result.zipB64;
+        if (!raw) throw new Error(t("latent.exportFailed"));
+        const bin = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+        blob = new Blob([bin], { type: "application/zip" });
+    } else {
+        blob = await resp.blob();
+        try {
+            counts = JSON.parse(resp.headers.get("X-Latent-Counts") || "{}");
+        } catch {
+            counts = {};
+        }
+        try {
+            warnings = JSON.parse(resp.headers.get("X-Latent-Warnings") || "[]");
+        } catch {
+            warnings = [];
+        }
+    }
+    if (!blob.size) throw new Error(t("latent.exportFailed"));
+    downloadBlob(blob, downloadName);
+    const done = t("latent.exportDone", {
+        final: Number(counts.final || 0),
+        first: Number(counts.first_pass || 0),
+    });
+    const warningText = (warnings || []).filter(Boolean).slice(0, 8).join("\n");
+    await packAlert(
+        editor,
+        warningText ? `${done}\n\n${t("latent.warnings")}\n${warningText}` : done,
+        t("toolbar.exportLatents"),
+    );
+}
+
+export async function importDirectorLatents(editor) {
+    const nodeId = editor?.node?.id;
+    if (nodeId == null) throw new Error(t("latent.noNode"));
+    const file = await pickZipFile(".mmxlatent.zip,.zip,application/zip");
+    if (!file) return;
+    if (!await packConfirm(editor, t("latent.importConfirm"), t("toolbar.importLatents"))) return;
+    let data;
+    if (file.size <= CHUNK_SOFT_LIMIT) {
+        const body = new FormData();
+        body.append("node_id", String(nodeId));
+        body.append("latent_pack", file, file.name || "latent.mmxlatent.zip");
+        const resp = await api.fetchApi("/minimax/director/import_latents", { method: "POST", body });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(text || t("latent.importFailed"));
+        }
+        data = await resp.json();
+    } else {
+        const uploaded = await uploadZipChunked(file);
+        data = await postJson("/minimax/director/import_latents", {
+            node_id: String(nodeId),
+            filename: uploaded.name || uploaded.filename,
+            subfolder: uploaded.subfolder || "",
+            type: uploaded.type || "input",
+        });
+    }
+    const imported = data?.imported || {};
+    if (!data || !data.artifacts) throw new Error(t("latent.importFailed"));
+    editor.node?._mmxRefreshFirstPassCache?.(0);
+    editor.node?.setDirtyCanvas?.(true, true);
+    await packAlert(
+        editor,
+        t("latent.importDone", {
+            final: Number(imported.final || 0),
+            first: Number(imported.first_pass || 0),
+            segments: (data.segments || []).join(", ") || "—",
+        }),
+        t("toolbar.importLatents"),
+    );
+}
+
 export function bindPackActions(editor) {
     const bind = (sel, fn) => {
         const el = editor.root?.querySelector(sel);
@@ -210,4 +304,6 @@ export function bindPackActions(editor) {
     };
     bind('[data-a="pack-export"]', () => exportDirectorPack(editor));
     bind('[data-a="pack-import"]', () => importDirectorPack(editor));
+    bind('[data-a="latent-export"]', () => exportDirectorLatents(editor));
+    bind('[data-a="latent-import"]', () => importDirectorLatents(editor));
 }

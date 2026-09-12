@@ -1,6 +1,9 @@
 # Source-video decode for v2v / timeline loading
 opencv-python-headless>=4.8
 
+# Portable Director latent archives (ComfyUI normally already includes this)
+safetensors>=0.4.0
+
 # Source-audio extract + incremental segment mp4 encode (「分段导出」边生成边保存)
 imageio-ffmpeg>=0.4
 
