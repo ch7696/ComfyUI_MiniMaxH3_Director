@@ -30,6 +30,9 @@ SOURCE_VIDEO_FP_KEY = "source_video"
 def source_video_identity(plan: DirectorPlan) -> list[str]:
     """Stable source-clip identity: relative path + size + mtime (overwrite-safe)."""
     from ..lib.video_io import resolve_video_path, video_clips_from_timeline
+    cached = getattr(plan, "_source_video_identity_cache", None)
+    if cached is not None:
+        return cached
 
     clips = video_clips_from_timeline((plan.raw or {}) if plan is not None else {})
     tokens: list[str] = []
@@ -46,6 +49,11 @@ def source_video_identity(plan: DirectorPlan) -> list[str]:
             tokens.append(f"{rel}:{st.st_size}:{mtime_ns}")
         except Exception:
             tokens.append(f"{rel}:missing")
+    if plan is not None:
+        try:
+            setattr(plan, "_source_video_identity_cache", tokens)
+        except Exception:
+            pass
     return tokens
 
 
